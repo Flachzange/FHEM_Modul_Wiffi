@@ -221,12 +221,54 @@ sub WIFFI_Collector_ProcessFrame {
         if ($created && $created->{TYPE} eq 'WIFFI_DEVICE'
             && ($created->{COLLECTOR} // '') eq $server->{NAME}
             && ($created->{MAC} // '') eq $packet->{mac}) {
-          $device = $created;
-          $server->{AUTOCREATED}++;
-          Log3($server, 3, "$server->{NAME}: autocreated $name");
-        } else {
+          # Configure only newly autocreated devices. Ordinary changes create
+          # events; the heartbeat always creates an event but stays out of DbLog.
+          for my $attr (
+            ['room', 'WIFFI'],
+            ['event-on-change-reading', '.*'],
+            ['event-on-update-reading', 'Systeminfo_sec_seit_reset'],
+            ['DbLogExclude', '^Systeminfo_sec_seit_reset
+      }
+    }
+  }
+
+  if (!$device) {
+    $server->{FRAMES_UNKNOWN}++;
+    Log3($server, 4, "$server->{NAME}: unknown WIFFI $packet->{mac} ($peer)");
+    return;
+  }
+
+  if ($packet->{reported_ip} && $peer ne $packet->{reported_ip}) {
+    Log3($server, 3, "$server->{NAME}: reported IP $packet->{reported_ip} ".
+      "differs from TCP peer $peer");
+  }
+  # WIFFI_DEVICE_Process stores the peer and module identity before
+  # publishing readings, which may trigger reentrant FHEM callbacks.
+  WIFFI_DEVICE_Process($device, $packet, $peer);
+  $server->{FRAMES_OK}++;
+}
+1;
+]
+          ) {
+            my ($key, $value) = @$attr;
+            my $attr_error = CommandAttr(undef, "$name $key $value");
+            Log3($server, 2, "$server->{NAME}: default attr $key failed: $attr_error")
+              if $attr_error;
+            # ATTR notifications may also modify or remove the new device.
+            if (!$defs{$name} || $defs{$name} != $created) {
+              $created = undef;
+              last;
+            }
+          }
+          if ($created) {
+            $device = $created;
+            $server->{AUTOCREATED}++;
+            Log3($server, 3, "$server->{NAME}: autocreated $name");
+          }
+        }
+        if (!$device) {
           Log3($server, 2, "$server->{NAME}: autocreated device was changed ".
-            "during definition; telegram not assigned");
+            "during setup; telegram not assigned");
         }
       }
     }
