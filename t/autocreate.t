@@ -140,6 +140,19 @@ WIFFI_Collector_ProcessFrame($server,
 is($server->{FRAMES_ERROR}, $previous+1, 'same MAC with different TCP source rejected');
 is($device->{PEER}, '192.0.2.21', 'last verified peer not changed');
 
+# An intentional FHEM modify redefines the same logical device and clears
+# the observed sender identity. This is the explicit recovery path for DHCP.
+$device->{OLDDEF} = $device->{DEF};
+my $modify_error = WIFFI_DEVICE_Define($device,
+  'MyPulseCounter WIFFI_DEVICE Collector 02:00:00:00:00:01');
+delete $device->{OLDDEF};
+is($modify_error, undef, 'explicit modify accepted');
+ok(!defined $device->{PEER}, 'modify clears previously learned peer');
+WIFFI_Collector_ProcessFrame($server,
+  telegram('02:00:00:00:00:01', '192.0.2.22', '15'), '192.0.2.22');
+is($device->{PEER}, '192.0.2.22', 'new peer accepted after explicit modify');
+is($device->{READINGS}{w_counter1}{VAL}, '15', 'new peer publishes after modify');
+
 $attr{Collector}{autocreate} = 1;
 $previous = $server->{FRAMES_ERROR};
 WIFFI_Collector_ProcessFrame($server,
