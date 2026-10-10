@@ -67,10 +67,10 @@ sub WIFFI_Collector_Decode {
 sub WIFFI_Collector_ExtractFrames {
   my ($buffer_ref) = @_;
   my @frames;
-  while ($buffer_ref =~ /[\x03\x04]/) {
+  while ($$buffer_ref =~ /[\x03\x04]/) {
     my $pos = $-[0];
-    my $frame = substr($buffer_ref, 0, $pos, '');
-    substr($buffer_ref, 0, 1, '');
+    my $frame = substr($$buffer_ref, 0, $pos, '');
+    substr($$buffer_ref, 0, 1, '');
     $frame =~ s/\A\s+|\s+\z//g;
     push @frames, $frame if length $frame;
   }
