@@ -1,0 +1,11 @@
+name: Perl parser tests
+on:
+  push:
+  pull_request:
+jobs:
+  perl-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run WIFFI parser tests
+        run: prove -I FHEM t/parser.t
