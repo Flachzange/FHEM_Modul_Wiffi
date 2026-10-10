@@ -5,7 +5,7 @@ Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:
 ## Design
 
 - One `WIFFI_Collector` listens on a shared TCP port, using FHEM's `TcpServerUtils`, and contains the shared JSON parser.
-- One logical `WIFFI_DEVICE` per MAC address; optional auto-creation.
+- One logical `WIFFI_DEVICE` per MAC address; optional automatic creation on the first valid telegram, disabled by default.
 - Uses `vars[].homematic_name` **unchanged** as the FHEM reading name.
 - Exposes `Systeminfo` fields with a `Systeminfo_` prefix.
 - Reassembles stream fragments delimited by ETX (`0x03`) or EOT (`0x04`); attempts any remaining JSON on TCP EOF.
@@ -22,6 +22,14 @@ attr WIFFI_Collector autocreate 1
 attr WIFFI_Collector allowfrom ^192\.168\.5\.(21|22|27|28)$
 attr WIFFI_Collector DbLogExclude .*
 ```
+
+### Automatic device discovery
+
+Enable `autocreate` explicitly with `attr WIFFI_Collector autocreate 1` after restricting `allowfrom` to trusted sources. Each first valid telegram from an unknown normalized MAC then creates a persistent FHEM `WIFFI_DEVICE`. No separate `define` commands are needed for each WIFFI.
+
+Names are deliberately deterministic and independent of `modultyp`: `WIFFI_` followed by **all 12 hexadecimal MAC digits** (for example `WIFFI_020000000001` for the synthetic test MAC `02:00:00:00:00:01`). The automatically created device can be renamed; future telegrams continue to match by the defined MAC and collector. Running `attr WIFFI_Collector autocreate 0` again stops only *new* automatic definitions; existing devices keep receiving data.
+
+The collector records successful auto-creations in the `AUTOCREATED` internal, and rejects duplicate logical MAC assignments, a changed sending IP for a known MAC, or a sending IP already associated with a different MAC. No arbitrary existing FHEM device is overwritten on name collision. Conflict resolution is deliberately manual; if a device legitimately changes IP, verify the new assignment before resetting the receiver/defining the device again. Peer identity is an in-process observation and cannot authenticate senders or detect past conflicts after restart. Automatic discovery should only be used on a trusted LAN.
 
 The WiFFI devices need to push TCP/JSON to FHEM's IP address on port 9192. **Do not change all devices at once**; initially test one device and keep the established Node-RED integrations until proven reliable.
 
@@ -56,14 +64,14 @@ These attributes are examples and should be reviewed against existing logging an
 - No direct device commands or HTTP control implemented.
 - No timer-based offline detector: consumers may use the `Systeminfo_sec_seit_reset` reading age.
 - Statistics counters are internals on the collector; diagnostic readings and reload/modify/disable behavior need validation.
-- Automatic creation produces names from type and trailing MAC octets. Rename FHEM devices as desired.
+- Automatic creation produces stable names from the **full MAC address**. Rename FHEM devices as desired; matching uses collector + MAC, not the name.
 - Existing MQTT-derived reading names (e.g. `gas_vars_2_value`, `aussentemperatur`) are deliberately **not** retained; dependent `userReadings`, statistics, DOIF, and DbLog queries need migration.
 - Systeminfo and numeric readings are preserved as text; the code must not interpret units or coerce implausible counters.
 
 ## Testing
 
 ```sh
-prove -I t/lib t/parser.t t/device.t
+prove -I t/lib t/parser.t t/device.t t/autocreate.t
 ```
 
 ## License
