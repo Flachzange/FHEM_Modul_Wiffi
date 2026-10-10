@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Nonblocking shared TCP collector for STALL WIFFI JSON
 package main;
 use strict;
