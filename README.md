@@ -68,4 +68,6 @@ prove -I FHEM t/parser.t
 
 ## License
 
-GPL-2.0-only. See `LICENSE`.
+This project is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License**, as published by the Free Software Foundation, **either version 2 of the License or (at your option) any later version** (`GPL-2.0-or-later`).
+
+This program is distributed **without any warranty**, including any implied warranty of merchantability or fitness for a particular purpose. See [`LICENSE`](LICENSE) for the full GPLv2 license text.
