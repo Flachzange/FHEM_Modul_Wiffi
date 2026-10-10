@@ -1,0 +1,139 @@
+# AGENTS.md — FHEM WIFFI Collector
+
+This repository develops an event-driven FHEM integration for the classic STALL WIFFI TCP/JSON device family. This file is binding guidance for coding agents, review, documentation, testing, and releases. Keep the implementation small, idiomatic, and evidence-driven.
+
+## Source of truth and project identity
+
+- The authoritative editable sources are the **current files in this repository**, on the branch being changed:
+  - \`FHEM/00_WIFFI_Collector.pm\` — FHEM TCP server and device dispatch.
+  - \`FHEM/10_WIFFI_DEVICE.pm\` — per-device FHEM endpoint.
+  - \`FHEM/WIFFI/Parser.pm\` — shared, FHEM-independent JSON/framing helpers.
+  - \`t/\`, \`.github/workflows/\`, \`README.md\` — tests and documented behavior.
+- Read current code and trace all affected paths before editing. Do not use old branches, generated archives, chat excerpts, cached copies, or prior releases as authoritative code.
+- Module types: \`WIFFI_Collector\` and \`WIFFI_DEVICE\`. Keep FHEM callback/global function prefixes \`WIFFI_Collector_\` and \`WIFFI_DEVICE_\`; parser functions live under \`WIFFI::Parser\`.
+- License: **GPL-2.0-only** (\`LICENSE\`); do not silently change it to the licenses used in related repositories.
+- Maintainer: Flachzange. Status: **experimental, not production-validated**.
+- The module shall not depend on Node-RED, MQTT, polling, \`notify\`, or \`dummy\` devices for normal ingestion.
+- Generated releases belong under \`dist/\` and are not hand-edited or committed. Do not introduce a release layout until it is actually needed and tested.
+
+## Evidence and communication
+
+1. Do not guess STALL firmware, WIFFI protocol, FHEM callback, or Perl library semantics. Check actual source, manufacturer documentation, or reproducible captures/tests.
+2. Distinguish verified specifications, observed device behavior, third-party reports, hypotheses, and unresolved questions. Cite source revision, firmware, and inspection date where practical.
+3. An observed payload is evidence of its shape, **not** proof of invariance across models or firmware.
+4. Treat existing implementation as something to audit, not as proof of correctness.
+5. Never infer a unit, scaling, update interval, writability, or meaning from a field name alone. Keep ambiguities explicit.
+6. Document new or changed protocol assumptions with the evidence and limits, preferably in a maintained protocol-evidence section or document. Do not assert features that were not tested.
+7. Never turn an unknown or malformed state into a valid default (for example, do not silently map invalid data to zero or \`off\`).
+8. Be precise about what the module, FHEM core, or an upstream device can guarantee. Do not claim end-to-end safety from unit tests alone.
+
+## WIFFI wire protocol and identity contract
+
+- A classic telegram is expected to contain \`modultyp\`, a \`vars\` array, and \`Systeminfo\`. Support documented format variations deliberately; never assume JSON array order is stable.
+- **Public sensor reading names come exactly from \`vars[].homematic_name\`**, not from \`desc\`, MQTT aliases, or array indexes. Do not silently prefix or rename them. Reject or explicitly report invalid names/collisions; do not overwrite one value with another.
+- \`vars[].name\` is a protocol variable identifier, not the default public reading name. Preserve it as useful internal context when needed for identity/validation.
+- Keep each device's readings on its own logical \`WIFFI_DEVICE\`; identical \`homematic_name\` values on *different devices* are valid.
+- Keep \`Systeminfo\` readings in a separately documented namespace such as \`Systeminfo_firmware\` and \`Systeminfo_sec_seit_reset\`, without collisions with sensor readings.
+- Normalize valid MAC spellings (for example \`b4:e6:2d:17:db:7\` and \`B4:E6:2D:17:DB:07\`) for lookup while retaining enough raw context for diagnosis.
+- MAC identification is not absolute proof of uniqueness. The two PULSECOUNTER2-LAN units originally advertised the same MAC until parameter 6 was changed. Detect conflicting simultaneous MAC/IP identities; never silently merge different physical devices. A change of sender IP requires an explicit, justified policy.
+- Compare TCP peer identity with payload identity where available, but account for routed/NATed setups and do not blindly trust a self-reported IP address.
+- Preserve device values without undocumented rounding, unit conversion, clamping, or zero substitution. This is especially important for large PULSECOUNTER counters, precision, \`type:number\` values encoded as strings, and \`type:boolean\` values encoded as \`"false"\`/\`"true"\`.
+- Malformed values, missing fields, duplicate names, unsupported types, and schema changes must be rejected or surfaced explicitly without partial updates that mix old and new telegram contents.
+- Only add device-specific rules when required by independently verified device behavior; keep the core parser generic.
+
+## TCP and framing contract
+
+- TCP is a **byte stream**, not a packet/message protocol. A read may contain a partial telegram, several telegrams, or a delimiter split across reads.
+- Buffer **per accepted connection**, not globally. Implement and test boundaries using observed ETX/EOT (\`0x03\`/\`0x04\`) and actual device close-on-send behavior. EOF processing is not automatically equivalent to a validated frame.
+- Never call JSON decoding on arbitrary partial TCP fragments; never process an unvalidated remainder after an error.
+- Bound input memory, frame size, connection count where relevant, and malformed-input log amplification. Oversized input, dropped connections, invalid JSON, and abandoned connections must be handled safely and observably.
+- Keep sockets nonblocking and use FHEM's verified TCP framework. No sleeps, blocking retry loops, recurring polling, or ad hoc alternative listener implementations.
+- Check listener/client socket lifetime, \`allowfrom\`, partial writes/reads where applicable, close/error behavior, undefined/deleted clients, and port changes.
+- For every accepted connection, ensure cleanup of its FHEM temporary device and buffer on EOF, error, undefine, disable, restart, and reload as applicable; do not leave duplicate listeners or abandoned selectlist entries.
+- Do not claim that an offline detector exists if no such detector is implemented. A heartbeat reading's timestamp can support an external event-driven watchdog, but **unchanged data still need to refresh heartbeat age**.
+- Distinguish transport-level receipt, JSON validity, successful identity assignment, and successful publication to the logical device when counting and reporting diagnostics.
+
+## FHEM runtime engineering rules
+
+- Verify uncertain FHEM behavior against current FHEM source/commandref. Never invent attribute semantics, callbacks, event rules, TCP helpers, or lifecycle guarantees.
+- Follow the complete called-framework path, not just our wrapper: especially \`TcpServer_Open\`, \`TcpServer_Accept\`, \`TcpServer_Close\`, \`CommandDefine\`, \`CommandDelete\`, \`InternalTimer\`, \`RemoveInternalTimer\`, and reading-update functions.
+- Record the inspected FHEM source revision/date and relevant side effects (return values, events, logging, timers, cleanup, security) in a PR when these functions matter.
+- Treat \`$hash->{STATE}\` and public readings as *presentations*, not authoritative transient socket/lifecycle state. FHEM can apply \`stateFormat\` or restore stale readings. Keep transient ownership/state in dedicated internals.
+- Update authoritative internal state **before** publishing FHEM readings or events: event processing may reenter module callbacks.
+- Preserve configured device attributes and FHEM ownership across realistic define/modify, autocreate, rename, rereadcfg, reload, disable/enable, undefine/delete, shutdown, and restart sequences.
+- Do not assume a callback return value is propagated by FHEM: inspect the actual caller. Recover or remain coherent even if a later callback fails after an earlier framework mutation.
+- Classify every new internal state value by lifetime: local operation, device hash, FHEM process, or persistence across restart. Do not rely on stale restored readings or a mutable device name for durable ownership.
+- Use stable ownership evidence (for example FUUID) before any persistent overwrite/deletion/migration. Never adopt data merely because an old name is reused.
+- Prefer \`readingsBeginUpdate\`/\`readingsBulkUpdate\`/\`readingsEndUpdate\` for coherent per-telegram changes; verify how event-on-change/update attributes interact with value timestamps and downstream consumers.
+- Keep public diagnostic readings minimal. Avoid publishing redundant copies of raw JSON, protocol metadata, and internal counters as readings without a real user-facing need.
+- Prevent unnecessary events and DbLog growth without sacrificing fresh data or heartbeat observability. Avoid per-sensor custom timers.
+- New dependencies require justification, documentation, and CI coverage. Do not introduce a generic framework or many single-purpose helpers where one clear path suffices.
+
+## Development simplicity and scope
+
+- Prefer extending/consolidating existing code paths rather than stacking helper functions and parallel implementations. Every new function must have a distinct, reviewable responsibility.
+- Avoid speculative compatibility layers, migration aliases, duplicated readings, or generated fields. A breaking interface change must be explicit, documented, tested, and approved in scope.
+- User-specific FHEM computed readings (\`userReadings\`), DOIF logic, unit conversions, moving averages, statistics, and DbLog migration belong in migration documentation, not silently in a generic protocol collector.
+- Keep the module event-driven. New recurring timers require a demonstrated feature need, ownership/cleanup review, and explicit approval.
+- Default to protocol correctness and maintainability over one-off accommodations for a single capture.
+
+## Security and privacy
+
+- Treat all incoming TCP data as untrusted. Validate lengths, schema, identifier formats, numeric representations, and command inputs before using them for FHEM commands or dynamic device names.
+- \`autocreate\` must not permit untrusted fields to inject FHEM commands, impersonate an existing device, or overwrite its configuration.
+- Favor restricting listeners to trusted networks and allowlists. A source-IP check is not cryptographic authentication; document that limitation.
+- Do not log entire captured telegrams by default. Never publish real network addresses, identifiers, wireless SSIDs, tokens, private endpoints, or unredacted raw payloads in committed fixtures, error reports, docs, or CI output.
+- Use reserved test-network addresses, synthetic MACs, and minimum synthetic payloads in public tests. Redact before copying from a production capture.
+- Error logs should identify failure type safely without uncontrolled dumping of untrusted input.
+
+## Tests: fidelity over green checks
+
+- The current minimal check is \`prove -I FHEM t/parser.t\`; GitHub Actions also performs isolated Perl syntax checks. These checks do **not** establish that FHEM listener, callbacks, or lifecycle behavior works.
+- Before presenting a collector implementation as ready, add integration-oriented tests that exercise real or faithfully modeled FHEM accept/read/dispatch/close behavior. Track any framework stubs' provenance and limitations.
+- A stub must reproduce *all relevant side effects* for the claim being tested (event publication, return handling, timer ownership, socket/FD registration, \`%defs\`, \`%selectlist\`, \`CommandDelete\`, etc.). A no-op stub must never be cited as evidence for behavior it omits.
+- Test: split and concatenated TCP telegrams; ETX/EOT and EOF; payloads without terminators; oversized and malformed frames; UTF-8, invalid JSON, missing/duplicate names; different firmware-type values; reconnect, duplicate MACs/IP conflicts; unknown and renamed devices; autocreate collision/injection.
+- Test: large/invalid numeric counters and value precision, string booleans, unchanged values/heartbeat timestamp refresh, event-on-change/update interactions, DbLog effects, and reentrant callbacks.
+- Test lifecycle/failure injection including startup, port bind failure, modify/reload, rereadcfg, disable/enable, missing device, socket I/O errors, undefine/delete, shutdown, and restart.
+- Confirm behavior on a **real test FHEM** and ideally a real WIFFI device before any production recommendation. State exactly what live tests were **not** done.
+- Use negative controls when practical: prove a test fails with a known bad frame, stale timer, conflicting identity, or dropped cleanup.
+- The test command should become a documented \`scripts/ci.sh\` entry point when this project gains a complete test suite; do not claim that it already exists.
+
+## Adversarial review and requirement closure
+
+For every nontrivial change, conduct an independent final review intended to **disprove** the implementation rather than repeat its happy-path tests:
+
+1. Re-read the issue/request, this file, current source, and full diff.
+2. Trace success, partial success, failures, unexpected data, reconnect, device identity change, cleanup, disable, reload, rename, delete, and shutdown where relevant.
+3. Examine transitive FHEM side effects, ignored callback results, stale state, duplicate sockets/timers, unintended event/DbLog load, and indirect privacy leaks.
+4. Validate all PR assertions against source and tests; distinguish proven coverage from assumptions and unperformed live integration.
+5. Document residual risks and external FHEM/device limitations consistently. Do not close an issue whose acceptance criteria remain unmet.
+
+## Documentation, interface, and release workflow
+
+- A user-visible change updates the relevant module sources, \`README.md\`, examples, tests, and changelog when introduced. Add German and English FHEM commandref documentation before release; keep both synchronized.
+- When a version is introduced, keep source version, embedded META, changelog, README, release artifacts, and tests consistent. Do **not** bump versions for docs-only/tests-only work.
+- Validate Perl syntax, complete tests, callback names, duplicate globals, required dependencies, commandref/META when implemented, UTF-8, JSON fixtures, source-to-package byte equality, checksums, and deterministic release artifacts before publishing. Document exceptions for steps not yet available.
+- Never claim the FHEM module is production-ready solely because isolated Perl syntax and parser tests pass.
+- Use a focused branch named \`codex/<short-description>\` for **new work** unless the maintainer explicitly requests otherwise or work continues in an already-approved existing PR branch.
+- Keep PRs reviewable; open drafts by default. PR descriptions must cover motivation, change scope, user-visible behavior, inspected FHEM source/side effects, tests actually run, tests not run, migration impact, and remaining risk.
+- Do not merge, publish a release, rewrite history, or force-push shared branches without explicit maintainer approval.
+
+## Context carried into this project
+
+These requirements are **WIFFI-specific**, not inherited from the other modules:
+
+- One shared TCP listener, logically separate devices keyed by validated/normalized device identity.
+- Initial protocol targets: WIFFI-pump 2, WEATHERMAN, two PULSECOUNTER2-LAN devices.
+- Only \`homematic_name\` determines sensor reading names; do not preserve earlier Node-RED/MQTT alias names as implicit compatibility output.
+- Sender heartbeat \`Systeminfo_sec_seit_reset\` should remain usable for external watchdogs; no implicit polling.
+- Existing Node-RED-to-MQTT devices must remain untouched during development and one-by-one migration.
+- Migrating existing FHEM devices requires separately reviewing dependent DOIF, userReadings, averages, \`statistics\`, DbLog readers, and historical timeseries. Do not silently change production data or automations.
+
+## Provenance of these agent rules
+
+Adapted and consolidated from the current default-branch versions of:
+
+- [FHEM_Modul_Fronius_Wattpilot/AGENTS.md](https://github.com/Flachzange/FHEM_Modul_Fronius_Wattpilot/blob/main/AGENTS.md): source-of-truth discipline, framework side-effect/callback audits, reload/lifetime/ownership analysis, test-double fidelity, adversarial review, safety claims, release and PR rigor.
+- [FHEMPresenceSimulation/AGENTS.md](https://github.com/Flachzange/FHEMPresenceSimulation/blob/main/AGENTS.md): simplicity/consolidation, explicit behavior contracts, strict tests, documentation and release workflow.
+
+Wattpilot-specific charging/authentication behavior and PresenceSimulation-specific playback/probability/persistence rules are intentionally **not** copied. Requirements stated above are adapted to this project's actual code maturity and protocol.
