@@ -2,14 +2,14 @@
 use strict;
 use warnings;
 use Test::More;
-use lib 'FHEM';
-use WIFFI::Parser;
+use lib 't/lib';
+require './FHEM/00_WIFFI_Collector.pm';
 
-is(WIFFI::Parser::normalize_mac('b4:e6:2d:17:db:7'),
+is(WIFFI_Collector_NormalizeMac('b4:e6:2d:17:db:7'),
    'B4:E6:2D:17:DB:07', 'short MAC octet is padded');
-is(WIFFI::Parser::normalize_mac('DE:AD:BE:EF:FE:01'),
+is(WIFFI_Collector_NormalizeMac('DE:AD:BE:EF:FE:01'),
    'DE:AD:BE:EF:FE:01', 'PULSECOUNTER MAC accepted');
-ok(!defined WIFFI::Parser::normalize_mac('deadbeef'), 'invalid MAC rejected');
+ok(!defined WIFFI_Collector_NormalizeMac('deadbeef'), 'invalid MAC rejected');
 
 my $raw = '{"modultyp":"PULSECOUNTER","vars":['
   .'{"name":"0","homematic_name":"w_counterIP","value":"192.168.5.28"},'
@@ -17,7 +17,7 @@ my $raw = '{"modultyp":"PULSECOUNTER","vars":['
   .'{"name":"12","homematic_name":"w_power1","value":0},'
   .'{"name":"15","homematic_name":"w_counter3","value":720575983170204.2}'
   .'],"Systeminfo":{"MAC-Adresse":"DE:AD:BE:EF:FE:01","sec_seit_reset":"69","firmware":"counter_LAN41"}}';
-my $p = WIFFI::Parser::decode($raw);
+my $p = WIFFI_Collector_Decode($raw);
 is($p->{mac}, 'DE:AD:BE:EF:FE:01', 'identification');
 is($p->{modultyp}, 'PULSECOUNTER', 'module type');
 is($p->{reported_ip}, '192.168.5.28', 'IP');
@@ -27,18 +27,18 @@ is($p->{readings}{w_counter3}, '720575983170204.2',
    'large number preserved as decimal');
 
 my $buf = '{"a":1}'."\x03".'{"b":2}'."\x04".'{"unfinished":';
-my @frames = WIFFI::Parser::extract_frames(\$buf);
+my @frames = WIFFI_Collector_ExtractFrames(\$buf);
 is_deeply(\@frames, ['{"a":1}', '{"b":2}'], 'multiple TCP frames');
 is($buf, '{"unfinished":', 'incomplete suffix retained');
 $buf .= 'true}'."\x03";
-@frames = WIFFI::Parser::extract_frames(\$buf);
+@frames = WIFFI_Collector_ExtractFrames(\$buf);
 is_deeply(\@frames, ['{"unfinished":true}'], 'split frames reassembled');
 
 my $duplicate = '{"modultyp":"wiffi-pump","vars":['
   .'{"homematic_name":"wiffi_pump","value":"false"},'
   .'{"homematic_name":"wiffi_pump","value":"true"}'
   .'],"Systeminfo":{"MAC-Adresse":"b4:e6:2d:17:db:7"}}';
-eval { WIFFI::Parser::decode($duplicate) };
+eval { WIFFI_Collector_Decode($duplicate) };
 like($@, qr/duplicate CCU name/, 'duplicate names rejected');
 
 done_testing();
