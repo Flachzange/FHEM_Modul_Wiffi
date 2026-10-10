@@ -111,7 +111,7 @@ is($attr{WIFFI_020000000001}{'event-on-change-reading'}, '.*',
 is($attr{WIFFI_020000000001}{'event-on-update-reading'},
    'Systeminfo_sec_seit_reset', 'heartbeat emits update events');
 is($attr{WIFFI_020000000001}{DbLogExclude},
-   '^Systeminfo_sec_seit_reset
+   '^Systeminfo_sec_seit_reset$', 'heartbeat excluded from DbLog');
 
 WIFFI_Collector_ProcessFrame($server,
   telegram('2:0:0:0:0:1', '192.0.2.21', '12.750'), '192.0.2.21');
@@ -121,7 +121,7 @@ WIFFI_Collector_ProcessFrame($server,
   telegram('02:00:00:00:00:01', '192.0.2.21', '12.760'), '192.0.2.21');
 is($attr{WIFFI_020000000001}{room}, 'Energie',
   'autocreate does not overwrite existing custom room');
-is($device->{READINGS}{w_counter1}{VAL}, '12.750', 'known device updated');
+is($device->{READINGS}{w_counter1}{VAL}, '12.760', 'known device updated');
 
 # A renamed device is resolved by its MAC, not by the old generated name.
 delete $defs{WIFFI_020000000001};
@@ -176,7 +176,7 @@ is($device->{READINGS}{w_counter1}{VAL}, '15', 'new peer publishes after modify'
 $attr{Collector}{autocreate} = 1;
 $previous = $server->{FRAMES_ERROR};
 WIFFI_Collector_ProcessFrame($server,
-  telegram('02:00:00:00:00:02', '192.0.2.21', '88'), '192.0.2.21');
+  telegram('02:00:00:00:00:02', '192.0.2.22', '88'), '192.0.2.22');
 is($server->{FRAMES_ERROR}, $previous+1, 'same peer with new MAC rejected');
 ok(!$defs{WIFFI_020000000002}, 'conflicting peer creates no new device');
 
@@ -214,116 +214,6 @@ $on_attr = sub { delete $defs{$_[0]} if $_[1] eq 'room' };
 WIFFI_Collector_ProcessFrame($server, $raw, '192.0.2.21');
 is($server->{AUTOCREATED}, 0, 'deleted during ATTR setup not counted');
 is($server->{FRAMES_UNKNOWN}, 1, 'deleted during ATTR not published');
-
-# Full MAC prevents aliasing on identical trailing octets.
-$server = start_case();
-$attr{Collector}{autocreate} = 1;
-WIFFI_Collector_ProcessFrame($server, $raw, '192.0.2.21');
-WIFFI_Collector_ProcessFrame($server,
-  telegram('06:00:00:00:00:01', '192.0.2.22', '22'), '192.0.2.22');
-ok($defs{WIFFI_020000000001} && $defs{WIFFI_060000000001},
-  'distinct full-MAC names for same trailing bytes');
-is($definitions, 2, 'both devices created once');
-
-# Malformed telegrams cannot autocreate.
-$server = start_case();
-$attr{Collector}{autocreate} = 1;
-WIFFI_Collector_ProcessFrame($server, '{"modultyp":"PULSECOUNTER"', '192.0.2.21');
-is($definitions, 0, 'truncated JSON creates nothing');
-is($server->{FRAMES_ERROR}, 1, 'truncated JSON rejected');
-
-done_testing();
-, 'heartbeat excluded from DbLog');
-
-WIFFI_Collector_ProcessFrame($server,
-  telegram('2:0:0:0:0:1', '192.0.2.21', '12.750'), '192.0.2.21');
-is($definitions, 1, 'normalized MAC does not cause a duplicate');
-is($device->{READINGS}{w_counter1}{VAL}, '12.750', 'known device updated');
-
-# A renamed device is resolved by its MAC, not by the old generated name.
-delete $defs{WIFFI_020000000001};
-$device->{NAME} = 'MyPulseCounter';
-$defs{MyPulseCounter} = $device;
-WIFFI_Collector_ProcessFrame($server,
-  telegram('02:00:00:00:00:01', '192.0.2.21', '13'), '192.0.2.21');
-is($definitions, 1, 'renamed device reused without autocreate');
-is($defs{MyPulseCounter}{READINGS}{w_counter1}{VAL}, '13', 'renamed device gets readings');
-
-$attr{Collector}{autocreate} = 0;
-WIFFI_Collector_ProcessFrame($server,
-  telegram('02:00:00:00:00:01', '192.0.2.21', '14'), '192.0.2.21');
-is($device->{READINGS}{w_counter1}{VAL}, '14',
-  'turning autocreate off does not disable existing devices');
-
-# Conflicting definitions for one MAC must block all updates, not pick
-# arbitrarily from hash iteration order.
-my $other = {
-  NAME => 'Other', TYPE => 'WIFFI_DEVICE',
-  COLLECTOR => 'Collector', MAC => '02:00:00:00:00:01',
-  READINGS => {}
-};
-$defs{Other} = $other;
-my $previous = $server->{FRAMES_ERROR};
-WIFFI_Collector_ProcessFrame($server,
-  telegram('02:00:00:00:00:01', '192.0.2.21', '999'), '192.0.2.21');
-is($server->{FRAMES_ERROR}, $previous+1, 'duplicate MAC detected');
-is($device->{READINGS}{w_counter1}{VAL}, '14', 'duplicate MAC did not update original');
-ok(!exists $other->{READINGS}{w_counter1}, 'duplicate MAC did not update second');
-delete $defs{Other};
-
-$previous = $server->{FRAMES_ERROR};
-WIFFI_Collector_ProcessFrame($server,
-  telegram('02:00:00:00:00:01', '192.0.2.22', '999'), '192.0.2.22');
-is($server->{FRAMES_ERROR}, $previous+1, 'same MAC with different TCP source rejected');
-is($device->{PEER}, '192.0.2.21', 'last verified peer not changed');
-
-# An intentional FHEM modify redefines the same logical device and clears
-# the observed sender identity. This is the explicit recovery path for DHCP.
-$device->{OLDDEF} = $device->{DEF};
-my $modify_error = WIFFI_DEVICE_Define($device,
-  'MyPulseCounter WIFFI_DEVICE Collector 02:00:00:00:00:01');
-delete $device->{OLDDEF};
-is($modify_error, undef, 'explicit modify accepted');
-ok(!defined $device->{PEER}, 'modify clears previously learned peer');
-WIFFI_Collector_ProcessFrame($server,
-  telegram('02:00:00:00:00:01', '192.0.2.22', '15'), '192.0.2.22');
-is($device->{PEER}, '192.0.2.22', 'new peer accepted after explicit modify');
-is($device->{READINGS}{w_counter1}{VAL}, '15', 'new peer publishes after modify');
-
-$attr{Collector}{autocreate} = 1;
-$previous = $server->{FRAMES_ERROR};
-WIFFI_Collector_ProcessFrame($server,
-  telegram('02:00:00:00:00:02', '192.0.2.21', '88'), '192.0.2.21');
-is($server->{FRAMES_ERROR}, $previous+1, 'same peer with new MAC rejected');
-ok(!$defs{WIFFI_020000000002}, 'conflicting peer creates no new device');
-
-# Existing unrelated names must never be overwritten/adopted.
-$server = start_case();
-$attr{Collector}{autocreate} = 1;
-my $foreign = {NAME => 'WIFFI_020000000001', TYPE => 'dummy'};
-$defs{WIFFI_020000000001} = $foreign;
-WIFFI_Collector_ProcessFrame($server, $raw, '192.0.2.21');
-is($definitions, 0, 'existing FHEM name blocks autocreate');
-is($defs{WIFFI_020000000001}, $foreign, 'unrelated FHEM device untouched');
-is($server->{FRAMES_UNKNOWN}, 1, 'name collision reported as unknown');
-
-# CommandDefine failure is not reported as successful creation.
-$server = start_case();
-$attr{Collector}{autocreate} = 1;
-$forced_error = 'test define failure';
-WIFFI_Collector_ProcessFrame($server, $raw, '192.0.2.21');
-is($server->{AUTOCREATED}, 0, 'failed define not counted');
-is($server->{FRAMES_UNKNOWN}, 1, 'failed define does not publish readings');
-ok(!$defs{WIFFI_020000000001}, 'failed define leaves no device');
-
-# CommandDefine fires DEFINED; test an event handler removing that device.
-$server = start_case();
-$attr{Collector}{autocreate} = 1;
-$on_define = sub { delete $defs{$_[0]} };
-WIFFI_Collector_ProcessFrame($server, $raw, '192.0.2.21');
-is($server->{AUTOCREATED}, 0, 'deleted-on-defined not counted');
-is($server->{FRAMES_UNKNOWN}, 1, 'deleted-on-defined not published');
-ok(!$defs{WIFFI_020000000001}, 'reentrantly deleted device not resurrected');
 
 # Full MAC prevents aliasing on identical trailing octets.
 $server = start_case();
