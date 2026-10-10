@@ -29,6 +29,8 @@ sub WIFFI_DEVICE_Define {
   return 'Invalid WIFFI MAC address' unless $normalized;
   $hash->{COLLECTOR} = $collector;
   $hash->{MAC} = $normalized;
+  # Explicit `modify` acknowledges that the device's TCP peer can change.
+  delete $hash->{PEER} if exists $hash->{OLDDEF};
   readingsSingleUpdate($hash, 'state', 'waiting', 0);
   return undef;
 }
