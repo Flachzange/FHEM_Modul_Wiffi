@@ -8,7 +8,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run parser tests
-        run: prove -I t/lib t/parser.t t/device.t
+        run: prove -I t/lib t/parser.t t/device.t t/autocreate.t
       - name: Check FHEM module Perl syntax
         run: |
           perl -I t/lib -I FHEM -c FHEM/00_WIFFI_Collector.pm
