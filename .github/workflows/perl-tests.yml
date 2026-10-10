@@ -1,4 +1,4 @@
-name: Perl parser tests
+name: Perl checks
 on:
   push:
   pull_request:
@@ -7,5 +7,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run WIFFI parser tests
+      - name: Run parser tests
         run: prove -I FHEM t/parser.t
+      - name: Check FHEM module Perl syntax
+        run: |
+          perl -I t/lib -I FHEM -c FHEM/00_WIFFI_Collector.pm
+          perl -I FHEM -c FHEM/10_WIFFI_DEVICE.pm
