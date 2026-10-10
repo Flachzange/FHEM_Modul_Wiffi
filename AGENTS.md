@@ -5,12 +5,11 @@ This repository develops an event-driven FHEM integration for the classic STALL 
 ## Source of truth and project identity
 
 - The authoritative editable sources are the **current files in this repository**, on the branch being changed:
-  - `FHEM/00_WIFFI_Collector.pm` — FHEM TCP server and device dispatch.
+  - `FHEM/00_WIFFI_Collector.pm` — FHEM TCP server, device dispatch, shared MAC/JSON/frame parser.
   - `FHEM/10_WIFFI_DEVICE.pm` — per-device FHEM endpoint.
-  - `FHEM/WIFFI/Parser.pm` — shared, FHEM-independent JSON/framing helpers.
   - `t/`, `.github/workflows/`, `README.md` — tests and documented behavior.
 - Read current code and trace all affected paths before editing. Do not use old branches, generated archives, chat excerpts, cached copies, or prior releases as authoritative code.
-- Module types: `WIFFI_Collector` and `WIFFI_DEVICE`. Keep FHEM callback/global function prefixes `WIFFI_Collector_` and `WIFFI_DEVICE_`; parser functions live under `WIFFI::Parser`.
+- Module types: `WIFFI_Collector` and `WIFFI_DEVICE`. Keep FHEM callback/global function prefixes `WIFFI_Collector_` and `WIFFI_DEVICE_`; shared parser functions use the `WIFFI_Collector_` prefix in the collector module. Ensure they are available even when `WIFFI_DEVICE` is defined before the collector.
 - License: **GPL-2.0-or-later**. The `LICENSE` file contains the unmodified GPLv2 text; project SPDX notices and the README explicitly grant GPLv2 *or (at the user's option) any later version*. Keep those statements consistent and do not change license terms without maintainer approval.
 - Maintainer: Flachzange. Status: **experimental, not production-validated**.
 - The module shall not depend on Node-RED, MQTT, polling, `notify`, or `dummy` devices for normal ingestion.
@@ -88,7 +87,7 @@ This repository develops an event-driven FHEM integration for the classic STALL 
 
 ## Tests: fidelity over green checks
 
-- The current minimal check is `prove -I FHEM t/parser.t`; GitHub Actions also performs isolated Perl syntax checks. These checks do **not** establish that FHEM listener, callbacks, or lifecycle behavior works.
+- The current minimal check is `prove -I t/lib t/parser.t t/device.t`; GitHub Actions also performs isolated Perl syntax checks. These checks do **not** establish that FHEM listener, callbacks, or lifecycle behavior works.
 - Before presenting a collector implementation as ready, add integration-oriented tests that exercise real or faithfully modeled FHEM accept/read/dispatch/close behavior. Track any framework stubs' provenance and limitations.
 - A stub must reproduce *all relevant side effects* for the claim being tested (event publication, return handling, timer ownership, socket/FD registration, `%defs`, `%selectlist`, `CommandDelete`, etc.). A no-op stub must never be cited as evidence for behavior it omits.
 - Test: split and concatenated TCP telegrams; ETX/EOT and EOF; payloads without terminators; oversized and malformed frames; UTF-8, invalid JSON, missing/duplicate names; different firmware-type values; reconnect, duplicate MACs/IP conflicts; unknown and renamed devices; autocreate collision/injection.
