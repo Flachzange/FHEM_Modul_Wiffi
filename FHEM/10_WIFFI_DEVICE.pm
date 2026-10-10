@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Logical FHEM device for one WIFFI sensor
 package main;
 use strict;
