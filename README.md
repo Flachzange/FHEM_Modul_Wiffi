@@ -4,7 +4,7 @@ Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:
 
 ## Design
 
-- One `WIFFI_Collector` listens on a shared TCP port, using FHEM's `TcpServerUtils`.
+- One `WIFFI_Collector` listens on a shared TCP port, using FHEM's `TcpServerUtils`, and contains the shared JSON parser.
 - One logical `WIFFI_DEVICE` per MAC address; optional auto-creation.
 - Uses `vars[].homematic_name` **unchanged** as the FHEM reading name.
 - Exposes `Systeminfo` fields with a `Systeminfo_` prefix.
@@ -14,7 +14,7 @@ Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:
 
 ## Planned first test (in a non-production FHEM instance)
 
-Install `FHEM/00_WIFFI_Collector.pm`, `FHEM/10_WIFFI_DEVICE.pm` in FHEM's `FHEM/` directory, and `FHEM/WIFFI/Parser.pm` in its `FHEM/WIFFI/` subdirectory. Then restart test FHEM.
+Install only `FHEM/00_WIFFI_Collector.pm` and `FHEM/10_WIFFI_DEVICE.pm` in FHEM's `FHEM/` directory. There is no separate parser installation. Then restart test FHEM.
 
 ```text
 define WIFFI_Collector WIFFI_Collector 9192
@@ -63,7 +63,7 @@ These attributes are examples and should be reviewed against existing logging an
 ## Testing
 
 ```sh
-prove -I FHEM t/parser.t
+prove -I t/lib t/parser.t t/device.t
 ```
 
 ## License
