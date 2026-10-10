@@ -242,9 +242,8 @@ sub WIFFI_Collector_ProcessFrame {
     Log3($server, 3, "$server->{NAME}: reported IP $packet->{reported_ip} ".
       "differs from TCP peer $peer");
   }
-  # Set the transport identity before publishing readings: FHEM readings
-  # trigger callbacks and may reenter this module.
-  $device->{PEER} = $peer;
+  # WIFFI_DEVICE_Process stores the peer and module identity before
+  # publishing readings, which may trigger reentrant FHEM callbacks.
   WIFFI_DEVICE_Process($device, $packet, $peer);
   $server->{FRAMES_OK}++;
 }
