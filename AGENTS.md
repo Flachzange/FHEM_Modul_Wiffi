@@ -79,7 +79,7 @@ This repository develops an event-driven FHEM integration for the classic STALL 
 ## Security and privacy
 
 - Treat all incoming TCP data as untrusted. Validate lengths, schema, identifier formats, numeric representations, and command inputs before using them for FHEM commands or dynamic device names.
-- `autocreate` must not permit untrusted fields to inject FHEM commands, impersonate an existing device, or overwrite its configuration.
+- `autocreate` is off by default; generate deterministic names from the **full normalized MAC**, never from untrusted `modultyp`; preserve manually renamed devices and refuse duplicate logical MAC/peer identity assignments. Never allow untrusted fields to inject FHEM commands, impersonate an existing device, or overwrite its configuration.
 - Favor restricting listeners to trusted networks and allowlists. A source-IP check is not cryptographic authentication; document that limitation.
 - Do not log entire captured telegrams by default. Never publish real network addresses, identifiers, wireless SSIDs, tokens, private endpoints, or unredacted raw payloads in committed fixtures, error reports, docs, or CI output.
 - Use reserved test-network addresses, synthetic MACs, and minimum synthetic payloads in public tests. Redact before copying from a production capture.
@@ -87,7 +87,7 @@ This repository develops an event-driven FHEM integration for the classic STALL 
 
 ## Tests: fidelity over green checks
 
-- The current minimal check is `prove -I t/lib t/parser.t t/device.t`; GitHub Actions also performs isolated Perl syntax checks. These checks do **not** establish that FHEM listener, callbacks, or lifecycle behavior works.
+- The current minimal check is `prove -I t/lib t/parser.t t/device.t t/autocreate.t`; GitHub Actions also performs isolated Perl syntax checks. These checks do **not** establish that FHEM listener, callbacks, or lifecycle behavior works.
 - Before presenting a collector implementation as ready, add integration-oriented tests that exercise real or faithfully modeled FHEM accept/read/dispatch/close behavior. Track any framework stubs' provenance and limitations.
 - A stub must reproduce *all relevant side effects* for the claim being tested (event publication, return handling, timer ownership, socket/FD registration, `%defs`, `%selectlist`, `CommandDelete`, etc.). A no-op stub must never be cited as evidence for behavior it omits.
 - Test: split and concatenated TCP telegrams; ETX/EOT and EOF; payloads without terminators; oversized and malformed frames; UTF-8, invalid JSON, missing/duplicate names; different firmware-type values; reconnect, duplicate MACs/IP conflicts; unknown and renamed devices; autocreate collision/injection.
