@@ -11,7 +11,7 @@ This repository develops an event-driven FHEM integration for the classic STALL 
   - `t/`, `.github/workflows/`, `README.md` — tests and documented behavior.
 - Read current code and trace all affected paths before editing. Do not use old branches, generated archives, chat excerpts, cached copies, or prior releases as authoritative code.
 - Module types: `WIFFI_Collector` and `WIFFI_DEVICE`. Keep FHEM callback/global function prefixes `WIFFI_Collector_` and `WIFFI_DEVICE_`; parser functions live under `WIFFI::Parser`.
-- License: **GPL-2.0-only** (`LICENSE`); do not silently change it to the licenses used in related repositories.
+- License: **GPL-2.0-or-later**. The `LICENSE` file contains the unmodified GPLv2 text; project SPDX notices and the README explicitly grant GPLv2 *or (at the user's option) any later version*. Keep those statements consistent and do not change license terms without maintainer approval.
 - Maintainer: Flachzange. Status: **experimental, not production-validated**.
 - The module shall not depend on Node-RED, MQTT, polling, `notify`, or `dummy` devices for normal ingestion.
 - Generated releases belong under `dist/` and are not hand-edited or committed. Do not introduce a release layout until it is actually needed and tested.
