@@ -27,7 +27,36 @@ attr WIFFI_Collector DbLogExclude .*
 
 Enable `autocreate` explicitly with `attr WIFFI_Collector autocreate 1` after restricting `allowfrom` to trusted sources. Each first valid telegram from an unknown normalized MAC then creates a persistent FHEM `WIFFI_DEVICE`. No separate `define` commands are needed for each WIFFI.
 
-Names are deliberately deterministic and independent of `modultyp`: `WIFFI_` followed by **all 12 hexadecimal MAC digits** (for example `WIFFI_020000000001` for the synthetic test MAC `02:00:00:00:00:01`). The automatically created device can be renamed; future telegrams continue to match by the defined MAC and collector. Running `attr WIFFI_Collector autocreate 0` again stops only *new* automatic definitions; existing devices keep receiving data.
+Names are deliberately deterministic and independent of `modultyp`: `WIFFI_` followed by **all 12 hexadecimal MAC digits** (for example `WIFFI_020000000001` for the synthetic test MAC `02:00:00:00:00:01`). The automatically created device can be renamed; future telegrams continue to match by the defined MAC and collector. Newly created devices get `room WIFFI`, `event-on-change-reading .*`, `event-on-update-reading Systeminfo_sec_seit_reset`, and `DbLogExclude ^Systeminfo_sec_seit_reset# FHEM WIFFI Collector (early prototype)
+
+Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:** not yet validated against a running FHEM installation or real hardware.
+
+## Design
+
+- One `WIFFI_Collector` listens on a shared TCP port, using FHEM's `TcpServerUtils`, and contains the shared JSON parser.
+- One logical `WIFFI_DEVICE` per MAC address; optional automatic creation on the first valid telegram, disabled by default.
+- Uses `vars[].homematic_name` **unchanged** as the FHEM reading name.
+- Exposes `Systeminfo` fields with a `Systeminfo_` prefix.
+- Reassembles stream fragments delimited by ETX (`0x03`) or EOT (`0x04`); attempts any remaining JSON on TCP EOF.
+- Accepts malformed frames only as errors, never applies partial updates.
+- No Node-RED, MQTT intermediary, `notify`, polling, or own periodic timer.
+
+## Planned first test (in a non-production FHEM instance)
+
+Install only `FHEM/00_WIFFI_Collector.pm` and `FHEM/10_WIFFI_DEVICE.pm` in FHEM's `FHEM/` directory. There is no separate parser installation. Then restart test FHEM.
+
+```text
+define WIFFI_Collector WIFFI_Collector 9192
+attr WIFFI_Collector autocreate 1
+attr WIFFI_Collector allowfrom ^192\.168\.5\.(21|22|27|28)$
+attr WIFFI_Collector DbLogExclude .*
+```
+
+### Automatic device discovery
+
+Enable `autocreate` explicitly with `attr WIFFI_Collector autocreate 1` after restricting `allowfrom` to trusted sources. Each first valid telegram from an unknown normalized MAC then creates a persistent FHEM `WIFFI_DEVICE`. No separate `define` commands are needed for each WIFFI.
+
+Names are deliberately deterministic and independent of `modultyp`: `WIFFI_` followed by **all 12 hexadecimal MAC digits** (for example `WIFFI_020000000001` for the synthetic test MAC `02:00:00:00:00:01`).  as initial defaults. Adjust these normal FHEM attributes freely after creation; reconnects do not overwrite them. Running `attr WIFFI_Collector autocreate 0` again stops only *new* automatic definitions; existing devices keep receiving data.
 
 The collector records successful auto-creations in the `AUTOCREATED` internal, and rejects duplicate logical MAC assignments, a changed sending IP for a known MAC, or a sending IP already associated with a different MAC. No arbitrary existing FHEM device is overwritten on name collision. Conflict resolution is deliberately manual. If a device legitimately changes IP, first verify the new assignment; then run `modify <device-name> <collector-name> <MAC>` in FHEM (for example `modify WIFFI_020000000001 WIFFI_Collector 02:00:00:00:00:01`) to clear its learned peer identity. Subsequent valid frames can then establish the new IP. Peer identity is an in-process observation and cannot authenticate senders or detect past conflicts after restart. Automatic discovery should only be used on a trusted LAN.
 
