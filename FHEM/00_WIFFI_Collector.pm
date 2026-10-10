@@ -97,6 +97,7 @@ sub WIFFI_Collector_Define {
   $hash->{FRAMES_OK} = 0;
   $hash->{FRAMES_ERROR} = 0;
   $hash->{FRAMES_UNKNOWN} = 0;
+  $hash->{AUTOCREATED} = 0;
 
   if ($init_done) {
     return TcpServer_Open($hash, $port, 'global');
@@ -173,29 +174,61 @@ sub WIFFI_Collector_ProcessFrame {
     return;
   }
 
-  my $device;
+  # Match existing logical devices by the complete normalized MAC.  Never
+  # silently adopt a device solely because its FHEM name or sender IP matches.
+  my @matches;
+  my $peer_conflict;
   for my $hash (values %defs) {
     next unless $hash->{TYPE} eq 'WIFFI_DEVICE';
     next unless ($hash->{COLLECTOR} // '') eq $server->{NAME};
-    next unless ($hash->{MAC} // '') eq $packet->{mac};
-    $device = $hash;
-    last;
+    if (($hash->{MAC} // '') eq $packet->{mac}) {
+      push @matches, $hash;
+    } elsif (defined $hash->{PEER} && $hash->{PEER} eq $peer) {
+      $peer_conflict = $hash;
+    }
   }
 
+  if (@matches > 1 || $peer_conflict) {
+    $server->{FRAMES_ERROR}++;
+    Log3($server, 2, "$server->{NAME}: WIFFI identity conflict from $peer");
+    return;
+  }
+  my $device = $matches[0];
+  if ($device && defined $device->{PEER} && $device->{PEER} ne $peer) {
+    $server->{FRAMES_ERROR}++;
+    Log3($server, 2, "$server->{NAME}: WIFFI MAC changed sender IP: ".
+      "$device->{NAME} ($device->{PEER} -> $peer); check device identity");
+    return;
+  }
+
+  # Stable, unambiguous default names.  Using the full MAC also makes the
+  # name independent of firmware-specific modultyp strings.
   if (!$device && AttrVal($server->{NAME}, 'autocreate', 0)) {
-    my $type = uc $packet->{modultyp};
-    $type =~ s/[^A-Z0-9_]/_/g;
-    my $shortmac = $packet->{mac};
-    $shortmac =~ s/://g;
-    my $name = 'WIFFI_' . $type . '_' . substr($shortmac, -6);
+    my $suffix = $packet->{mac};
+    $suffix =~ s/://g;
+    my $name = 'WIFFI_' . $suffix;
     if ($defs{$name}) {
-      Log3($server, 2, "$server->{NAME}: name conflict: $name");
+      Log3($server, 2, "$server->{NAME}: autocreate name already exists: $name");
     } else {
       my $error = CommandDefine(undef,
         "$name WIFFI_DEVICE $server->{NAME} $packet->{mac}");
-      Log3($server, 2, "$server->{NAME}: autocreate failed: $error")
-        if defined $error && length $error;
-      $device = $defs{$name} unless $error;
+      if ($error) {
+        Log3($server, 2, "$server->{NAME}: autocreate failed: $error");
+      } else {
+        # CommandDefine triggers DEFINED events. A user automation may have
+        # renamed, changed or deleted the device while it was being created.
+        my $created = $defs{$name};
+        if ($created && $created->{TYPE} eq 'WIFFI_DEVICE'
+            && ($created->{COLLECTOR} // '') eq $server->{NAME}
+            && ($created->{MAC} // '') eq $packet->{mac}) {
+          $device = $created;
+          $server->{AUTOCREATED}++;
+          Log3($server, 3, "$server->{NAME}: autocreated $name");
+        } else {
+          Log3($server, 2, "$server->{NAME}: autocreated device was changed ".
+            "during definition; telegram not assigned");
+        }
+      }
     }
   }
 
@@ -209,10 +242,9 @@ sub WIFFI_Collector_ProcessFrame {
     Log3($server, 3, "$server->{NAME}: reported IP $packet->{reported_ip} ".
       "differs from TCP peer $peer");
   }
-  if ($device->{PEER} && $device->{PEER} ne $peer) {
-    Log3($server, 3, "$server->{NAME}: $packet->{mac} moved from ".
-      "$device->{PEER} to $peer");
-  }
+  # Set the transport identity before publishing readings: FHEM readings
+  # trigger callbacks and may reenter this module.
+  $device->{PEER} = $peer;
   WIFFI_DEVICE_Process($device, $packet, $peer);
   $server->{FRAMES_OK}++;
 }
