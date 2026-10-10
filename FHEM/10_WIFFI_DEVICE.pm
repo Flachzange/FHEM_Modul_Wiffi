@@ -3,7 +3,6 @@
 package main;
 use strict;
 use warnings;
-use WIFFI::Parser;
 use vars qw($readingFnAttributes);
 
 sub WIFFI_DEVICE_Initialize {
@@ -18,7 +17,15 @@ sub WIFFI_DEVICE_Define {
   my ($name, $type, $collector, $mac) = split /\s+/, $def;
   return 'Usage: define <name> WIFFI_DEVICE <collector-name> <mac-address>'
     unless defined $collector && defined $mac;
-  my $normalized = WIFFI::Parser::normalize_mac($mac);
+  # A WIFFI_DEVICE may be restored before the collector. Load its shared
+  # parser without creating a listener or requiring a defined collector.
+  if (!defined &WIFFI_Collector_NormalizeMac) {
+    my $loaded = LoadModule('WIFFI_Collector');
+    return 'Cannot load WIFFI_Collector'
+      if !defined $loaded || $loaded eq 'UNDEFINED'
+        || !defined &WIFFI_Collector_NormalizeMac;
+  }
+  my $normalized = WIFFI_Collector_NormalizeMac($mac);
   return 'Invalid WIFFI MAC address' unless $normalized;
   $hash->{COLLECTOR} = $collector;
   $hash->{MAC} = $normalized;
