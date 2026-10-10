@@ -227,28 +227,7 @@ sub WIFFI_Collector_ProcessFrame {
             ['room', 'WIFFI'],
             ['event-on-change-reading', '.*'],
             ['event-on-update-reading', 'Systeminfo_sec_seit_reset'],
-            ['DbLogExclude', '^Systeminfo_sec_seit_reset
-      }
-    }
-  }
-
-  if (!$device) {
-    $server->{FRAMES_UNKNOWN}++;
-    Log3($server, 4, "$server->{NAME}: unknown WIFFI $packet->{mac} ($peer)");
-    return;
-  }
-
-  if ($packet->{reported_ip} && $peer ne $packet->{reported_ip}) {
-    Log3($server, 3, "$server->{NAME}: reported IP $packet->{reported_ip} ".
-      "differs from TCP peer $peer");
-  }
-  # WIFFI_DEVICE_Process stores the peer and module identity before
-  # publishing readings, which may trigger reentrant FHEM callbacks.
-  WIFFI_DEVICE_Process($device, $packet, $peer);
-  $server->{FRAMES_OK}++;
-}
-1;
-]
+            ['DbLogExclude', '^Systeminfo_sec_seit_reset$']
           ) {
             my ($key, $value) = @$attr;
             my $attr_error = CommandAttr(undef, "$name $key $value");
