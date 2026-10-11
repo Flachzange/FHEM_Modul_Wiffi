@@ -228,7 +228,8 @@ sub WIFFI_Collector_ProcessFrame {
             ['room', 'WIFFI'],
             ['event-on-change-reading', '.*'],
             ['event-on-update-reading', 'Systeminfo_sec_seit_reset'],
-            ['DbLogExclude', '^Systeminfo_sec_seit_reset
+            ['DbLogExclude', '^Systeminfo_sec_seit_reset$']
+          );
           if ($packet->{modultyp} eq 'wiffi-pump') {
             push @defaults, ['stateFormat', 'wiffi_pump'],
                             ['devStateIcon', 'true:on false:off'];
