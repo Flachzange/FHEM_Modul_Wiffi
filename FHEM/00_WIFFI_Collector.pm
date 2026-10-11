@@ -224,7 +224,59 @@ sub WIFFI_Collector_ProcessFrame {
           # Defaults apply only at creation, never to existing devices.
           # WIFFI-pump uses its real pump feedback for FHEMWEB status.
           # Do not override attributes set by a DEFINED event handler.
-          my @defaults = (['room', 'WIFFI']);
+          my @defaults = (
+            ['room', 'WIFFI'],
+            ['event-on-change-reading', '.*'],
+            ['event-on-update-reading', 'Systeminfo_sec_seit_reset'],
+            ['DbLogExclude', '^Systeminfo_sec_seit_reset
+          if ($packet->{modultyp} eq 'wiffi-pump') {
+            push @defaults, ['stateFormat', 'wiffi_pump'],
+                            ['devStateIcon', 'true:on false:off'];
+          }
+          for my $default (@defaults) {
+            my ($key, $value) = @$default;
+            next if defined AttrVal($name, $key, undef);
+            my $attr_error = CommandAttr(undef, "$name $key $value");
+            Log3($server, 2, "$server->{NAME}: default attr $key failed: $attr_error")
+              if $attr_error;
+            # ATTR notifications may remove or rename the new device.
+            if (!$defs{$name} || $defs{$name} != $created) {
+              $created = undef;
+              last;
+            }
+          }
+          if ($created) {
+            $device = $created;
+            $server->{AUTOCREATED}++;
+            Log3($server, 3, "$server->{NAME}: autocreated $name");
+          }
+        }
+        if (!$device) {
+          Log3($server, 2, "$server->{NAME}: autocreated device was changed ".
+            "during setup; telegram not assigned");
+        }
+      }
+    }
+  }
+
+  if (!$device) {
+    $server->{FRAMES_UNKNOWN}++;
+    Log3($server, 4, "$server->{NAME}: unknown WIFFI $packet->{mac} ($peer)");
+    return;
+  }
+
+  if ($packet->{reported_ip} && $peer ne $packet->{reported_ip}) {
+    Log3($server, 3, "$server->{NAME}: reported IP $packet->{reported_ip} ".
+      "differs from TCP peer $peer");
+  }
+  # WIFFI_DEVICE_Process stores the peer and module identity before
+  # publishing readings, which may trigger reentrant FHEM callbacks.
+  WIFFI_DEVICE_Process($device, $packet, $peer);
+  $server->{FRAMES_OK}++;
+}
+1;
+]
+          );
           if ($packet->{modultyp} eq 'wiffi-pump') {
             push @defaults, ['stateFormat', 'wiffi_pump'],
                             ['devStateIcon', 'true:on false:off'];
