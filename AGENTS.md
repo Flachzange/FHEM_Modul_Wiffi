@@ -65,7 +65,74 @@ This repository develops an event-driven FHEM integration for the classic STALL 
 - Use stable ownership evidence (for example FUUID) before any persistent overwrite/deletion/migration. Never adopt data merely because an old name is reused.
 - Prefer `readingsBeginUpdate`/`readingsBulkUpdate`/`readingsEndUpdate` for coherent per-telegram changes; verify how event-on-change/update attributes interact with value timestamps and downstream consumers.
 - Keep public diagnostic readings minimal. Avoid publishing redundant copies of raw JSON, protocol metadata, and internal counters as readings without a real user-facing need.
-- Keep event and DbLog filtering **opt-in**: autocreate must not set `event-on-change-reading`, `event-on-update-reading`, or `DbLogExclude`. Native FHEM behavior is the default, including repeated heartbeat events. Users own event/DbLog filtering decisions; do not silently change existing attributes. Avoid per-sensor custom timers.
+- For newly autocreated WIFFI devices, apply `event-on-change-reading .*`, `event-on-update-reading Systeminfo_sec_seit_reset`, and `DbLogExclude ^Systeminfo_sec_seit_reset# AGENTS.md — FHEM WIFFI Collector
+
+This repository develops an event-driven FHEM integration for the classic STALL WIFFI TCP/JSON device family. This file is binding guidance for coding agents, review, documentation, testing, and releases. Keep the implementation small, idiomatic, and evidence-driven.
+
+## Source of truth and project identity
+
+- The authoritative editable sources are the **current files in this repository**, on the branch being changed:
+  - `FHEM/00_WIFFI_Collector.pm` — FHEM TCP server, device dispatch, shared MAC/JSON/frame parser.
+  - `FHEM/10_WIFFI_DEVICE.pm` — per-device FHEM endpoint.
+  - `t/`, `.github/workflows/`, `README.md` — tests and documented behavior.
+- Read current code and trace all affected paths before editing. Do not use old branches, generated archives, chat excerpts, cached copies, or prior releases as authoritative code.
+- Module types: `WIFFI_Collector` and `WIFFI_DEVICE`. Keep FHEM callback/global function prefixes `WIFFI_Collector_` and `WIFFI_DEVICE_`; shared parser functions use the `WIFFI_Collector_` prefix in the collector module. Ensure they are available even when `WIFFI_DEVICE` is defined before the collector.
+- License: **GPL-2.0-or-later**. The `LICENSE` file contains the unmodified GPLv2 text; project SPDX notices and the README explicitly grant GPLv2 *or (at the user's option) any later version*. Keep those statements consistent and do not change license terms without maintainer approval.
+- Maintainer: Flachzange. Status: **experimental, not production-validated**.
+- The module shall not depend on Node-RED, MQTT, polling, `notify`, or `dummy` devices for normal ingestion. WIFFI HTTP control uses FHEM `HttpUtils_NonblockingGet` without introducing blocking commands or timers.
+- Generated releases belong under `dist/` and are not hand-edited or committed. Do not introduce a release layout until it is actually needed and tested.
+
+## Evidence and communication
+
+1. Do not guess STALL firmware, WIFFI protocol, FHEM callback, or Perl library semantics. Check actual source, manufacturer documentation, or reproducible captures/tests.
+2. Distinguish verified specifications, observed device behavior, third-party reports, hypotheses, and unresolved questions. Cite source revision, firmware, and inspection date where practical.
+3. An observed payload is evidence of its shape, **not** proof of invariance across models or firmware.
+4. Treat existing implementation as something to audit, not as proof of correctness.
+5. Never infer a unit, scaling, update interval, writability, or meaning from a field name alone. Keep ambiguities explicit.
+6. Document new or changed protocol assumptions with the evidence and limits, preferably in a maintained protocol-evidence section or document. Do not assert features that were not tested.
+7. Never turn an unknown or malformed state into a valid default (for example, do not silently map invalid data to zero or `off`).
+8. Be precise about what the module, FHEM core, or an upstream device can guarantee. Do not claim end-to-end safety from unit tests alone.
+
+## WIFFI wire protocol and identity contract
+
+- A classic telegram is expected to contain `modultyp`, a `vars` array, and `Systeminfo`. Support documented format variations deliberately; never assume JSON array order is stable.
+- **Public sensor reading names come exactly from `vars[].homematic_name`**, not from `desc`, MQTT aliases, or array indexes. Do not silently prefix or rename them. Reject or explicitly report invalid names/collisions; do not overwrite one value with another.
+- `vars[].name` is a protocol variable identifier, not the default public reading name. Preserve it as useful internal context when needed for identity/validation.
+- Keep each device's readings on its own logical `WIFFI_DEVICE`; identical `homematic_name` values on *different devices* are valid.
+- Keep `Systeminfo` readings in a separately documented namespace such as `Systeminfo_firmware` and `Systeminfo_sec_seit_reset`, without collisions with sensor readings.
+- Normalize valid MAC spellings (for example `b4:e6:2d:17:db:7` and `B4:E6:2D:17:DB:07`) for lookup while retaining enough raw context for diagnosis.
+- MAC identification is not absolute proof of uniqueness. The two PULSECOUNTER2-LAN units originally advertised the same MAC until parameter 6 was changed. Detect conflicting simultaneous MAC/IP identities; never silently merge different physical devices. A change of sender IP requires an explicit, justified policy.
+- Compare TCP peer identity with payload identity where available, but account for routed/NATed setups and do not blindly trust a self-reported IP address.
+- Preserve device values without undocumented rounding, unit conversion, clamping, or zero substitution. This is especially important for large PULSECOUNTER counters, precision, `type:number` values encoded as strings, and `type:boolean` values encoded as `"false"`/`"true"`.
+- Malformed values, missing fields, duplicate names, unsupported types, and schema changes must be rejected or surfaced explicitly without partial updates that mix old and new telegram contents.
+- Only add device-specific rules when required by independently verified device behavior; keep the core parser generic.
+
+## TCP and framing contract
+
+- TCP is a **byte stream**, not a packet/message protocol. A read may contain a partial telegram, several telegrams, or a delimiter split across reads.
+- Buffer **per accepted connection**, not globally. Implement and test boundaries using observed ETX/EOT (`0x03`/`0x04`) and actual device close-on-send behavior. EOF processing is not automatically equivalent to a validated frame.
+- Never call JSON decoding on arbitrary partial TCP fragments; never process an unvalidated remainder after an error.
+- Bound input memory, frame size, connection count where relevant, and malformed-input log amplification. Oversized input, dropped connections, invalid JSON, and abandoned connections must be handled safely and observably.
+- Keep sockets nonblocking and use FHEM's verified TCP framework. No sleeps, blocking retry loops, recurring polling, or ad hoc alternative listener implementations.
+- Check listener/client socket lifetime, `allowfrom`, partial writes/reads where applicable, close/error behavior, undefined/deleted clients, and port changes.
+- For every accepted connection, ensure cleanup of its FHEM temporary device and buffer on EOF, error, undefine, disable, restart, and reload as applicable; do not leave duplicate listeners or abandoned selectlist entries.
+- Do not claim that an offline detector exists if no such detector is implemented. A heartbeat reading's timestamp can support an external event-driven watchdog, but **unchanged data still need to refresh heartbeat age**.
+- Distinguish transport-level receipt, JSON validity, successful identity assignment, and successful publication to the logical device when counting and reporting diagnostics.
+
+## FHEM runtime engineering rules
+
+- Verify uncertain FHEM behavior against current FHEM source/commandref. Never invent attribute semantics, callbacks, event rules, TCP helpers, or lifecycle guarantees.
+- Follow the complete called-framework path, not just our wrapper: especially `TcpServer_Open`, `TcpServer_Accept`, `TcpServer_Close`, `CommandDefine`, `CommandDelete`, `InternalTimer`, `RemoveInternalTimer`, and reading-update functions.
+- Record the inspected FHEM source revision/date and relevant side effects (return values, events, logging, timers, cleanup, security) in a PR when these functions matter.
+- Treat `$hash->{STATE}` and public readings as *presentations*, not authoritative transient socket/lifecycle state. FHEM can apply `stateFormat` or restore stale readings. Keep transient ownership/state in dedicated internals.
+- Update authoritative internal state **before** publishing FHEM readings or events: event processing may reenter module callbacks.
+- Preserve configured device attributes and FHEM ownership across realistic define/modify, autocreate, rename, rereadcfg, reload, disable/enable, undefine/delete, shutdown, and restart sequences.
+- Do not assume a callback return value is propagated by FHEM: inspect the actual caller. Recover or remain coherent even if a later callback fails after an earlier framework mutation.
+- Classify every new internal state value by lifetime: local operation, device hash, FHEM process, or persistence across restart. Do not rely on stale restored readings or a mutable device name for durable ownership.
+- Use stable ownership evidence (for example FUUID) before any persistent overwrite/deletion/migration. Never adopt data merely because an old name is reused.
+- Prefer `readingsBeginUpdate`/`readingsBulkUpdate`/`readingsEndUpdate` for coherent per-telegram changes; verify how event-on-change/update attributes interact with value timestamps and downstream consumers.
+- Keep public diagnostic readings minimal. Avoid publishing redundant copies of raw JSON, protocol metadata, and internal counters as readings without a real user-facing need.
+ as user-editable defaults. This suppresses unchanged-value events while retaining a heartbeat event without filling DbLog with uptime counters. Do not change these attributes on existing devices or overwrite values set by `DEFINED` hooks. Pump-specific `stateFormat`/`devStateIcon` defaults still apply only to `wiffi-pump`. Avoid per-sensor custom timers. Explicitly document consequences for logging and periodic graph samples.
 - New dependencies require justification, documentation, and CI coverage. Do not introduce a generic framework or many single-purpose helpers where one clear path suffices.
 
 ## Development simplicity and scope
