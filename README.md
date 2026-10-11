@@ -28,7 +28,17 @@ Enable `autocreate` explicitly with `attr WIFFI_Collector autocreate 1` after re
 
 Names are deliberately deterministic and independent of `modultyp`: `WIFFI_` followed by **all 12 hexadecimal MAC digits** (for example `WIFFI_020000000001` for the synthetic test MAC `02:00:00:00:00:01`). The automatically created device can be renamed; future telegrams continue to match by the defined MAC and collector. Running `attr WIFFI_Collector autocreate 0` again stops only *new* automatic definitions; existing devices keep receiving data.
 
-Autocreate sets `room WIFFI` on a new logical device. For a newly detected `wiffi-pump`, it additionally sets `stateFormat wiffi_pump` and `devStateIcon true:on false:off`, showing the actual reported pump state in FHEMWEB. It does **not** set `webCmd`, `event-on-change-reading`, `event-on-update-reading`, or `DbLogExclude`. All reading updates and events follow native FHEM behavior, and DbLog can log all emitted readings subject to its own configuration. These defaults are applied only during creation, only when the relevant attribute has not already been set by a `DEFINED` handler. Existing devices and manually changed attributes are never overwritten. To use the display on a previously created WIFFI-pump, set the two attributes manually once.
+Autocreate sets `room WIFFI` and these event/DbLog defaults on every newly discovered logical device:
+
+```text
+attr <device> event-on-change-reading .*
+attr <device> event-on-update-reading Systeminfo_sec_seit_reset
+attr <device> DbLogExclude ^Systeminfo_sec_seit_reset$
+```
+
+Unchanged readings continue to receive fresh timestamps, but do not generate ordinary change events; `Systeminfo_sec_seit_reset` still generates a heartbeat event on each update and is excluded from DbLog. Note that unchanged sensor values no longer generate periodic graph/database samples through the normal event stream. For a newly detected `wiffi-pump`, autocreate additionally sets `stateFormat wiffi_pump` and `devStateIcon true:on false:off`, displaying the reported pump state in FHEMWEB. It does **not** set `webCmd`.
+
+These attributes are set only at initial autocreate and only if a `DEFINED` handler has not already set the attribute. They are not forced onto existing logical devices, and later telegrams never overwrite user configuration. All defaults can be changed or removed with normal `attr`/`deleteattr` commands.
 
 The collector records successful auto-creations in the `AUTOCREATED` internal, and rejects duplicate logical MAC assignments, a changed sending IP for a known MAC, or a sending IP already associated with a different MAC. No arbitrary existing FHEM device is overwritten on name collision. Conflict resolution is deliberately manual. If a device legitimately changes IP, first verify the new assignment; then run `modify <device-name> <collector-name> <MAC>` in FHEM (for example `modify WIFFI_020000000001 WIFFI_Collector 02:00:00:00:00:01`) to clear its learned peer identity. Subsequent valid frames can then establish the new IP. Peer identity is an in-process observation and cannot authenticate senders or detect past conflicts after restart. Automatic discovery should only be used on a trusted LAN.
 
@@ -40,13 +50,7 @@ Manual definition without auto-create is also possible:
 define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector B4:E6:2D:17:DB:07
 ```
 
-If devices were autocreated with an earlier prototype that set event/DbLog filter attributes, remove those attributes **manually** if you want unfiltered behavior. For a synthetic device named `WIFFI_020000000001`:
-
-```text
-deleteattr WIFFI_020000000001 event-on-change-reading
-deleteattr WIFFI_020000000001 event-on-update-reading
-deleteattr WIFFI_020000000001 DbLogExclude
-```
+For devices already created while the earlier **unfiltered** autocreate defaults were active (such as `WIFFI_DEADBEEFFE00`), add the three attributes manually if desired. For an unfiltered device, remove them using `deleteattr <device> <attribute>`. Updating the collector does **not** retrofit attributes onto existing devices.
 
 The module does not alter attributes on existing devices or edit existing MQTT2 devices.
 
