@@ -50,6 +50,24 @@ deleteattr WIFFI_020000000001 DbLogExclude
 
 The module does not alter attributes on existing devices or edit existing MQTT2 devices.
 
+### Direct control of WIFFI-pump 2
+
+Once a valid TCP telegram identifies a logical device as `wiffi-pump`, it exposes these FHEM setters:
+
+```text
+set WIFFI_PUMP2 on
+set WIFFI_PUMP2 off
+set WIFFI_PUMP2 on-for-timer 300
+```
+
+The manufacturer documents the HTTP requests `/?trigger:on:` (switch on **indefinitely**), `/?trigger:off:` (switch off), and `/?trigger:300:` (switch on for 300 seconds). Duration is restricted by this module to an integer from 1 to 3600 seconds. These commands are deliberately limited to `wiffi-pump`; no generic URL or expert `param:` setter is exposed. Command references: [STALL WIFFI-pump-2 manual](https://www.stall.biz/project/wiffi-pump-2-die-intelligente-steuerung-der-zirkulationspumpe-mit-heizungsueberwachung/) and [STALL command reference PDF](https://www.stall.biz/wp-content/uploads/2016/08/wiffi_update_anleitung22-1.pdf). The manufacturer's changelog lists `wiffi_pump2_110` as a web-server stability update without major functional changes. Actual HTTP control still requires a live test on this firmware.
+
+The HTTP request uses FHEM's asynchronous `HttpUtils_NonblockingGet` (no external `wget` or polling). It targets only the verified TCP peer address from the last incoming telegram, not the JSON-reported IP reading. Another command is refused while an HTTP request is outstanding (5-second timeout), and outstanding requests are canceled on undefine/modify. After a restart or modify, wait for a fresh TCP telegram before sending commands.
+
+A successful HTTP request is **not confirmation that the relay changed state**. The native `wiffi_pump` reading is updated only by subsequent sensor telemetry, not optimistically by a `set` command. Any transport or HTTP status error is logged, with no additional diagnostic readings. Commands must only be used from a trusted network; the manufacturer's endpoint does not provide cryptographic authentication.
+
+
+
 ## Recognized sample devices
 
 | Type | MAC | Example readings |
@@ -62,7 +80,7 @@ The module does not alter attributes on existing devices or edit existing MQTT2 
 ## Known limitations / pending work
 
 - Initial WIFFI-pump 2 live test passed; remaining WIFFI model variants, TCP framing edge cases, startup/reload/disable and failure recovery require real FHEM integration tests.
-- No direct device commands or HTTP control implemented.
+- Pump HTTP commands are implemented but have **not yet been tested against actual WIFFI-pump hardware**; the live test so far covers inbound TCP telemetry only.
 - No timer-based offline detector: consumers may use the `Systeminfo_sec_seit_reset` reading age.
 - Statistics counters are internals on the collector; diagnostic readings and reload/modify/disable behavior need validation.
 - Automatic creation produces stable names from the **full MAC address**. Rename FHEM devices as desired; matching uses collector + MAC, not the name.
@@ -72,7 +90,7 @@ The module does not alter attributes on existing devices or edit existing MQTT2 
 ## Testing
 
 ```sh
-prove -I t/lib t/parser.t t/device.t t/autocreate.t
+prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t
 ```
 
 ## License
