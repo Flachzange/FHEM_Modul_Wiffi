@@ -12,7 +12,7 @@ This repository develops an event-driven FHEM integration for the classic STALL 
 - Module types: `WIFFI_Collector` and `WIFFI_DEVICE`. Keep FHEM callback/global function prefixes `WIFFI_Collector_` and `WIFFI_DEVICE_`; shared parser functions use the `WIFFI_Collector_` prefix in the collector module. Ensure they are available even when `WIFFI_DEVICE` is defined before the collector.
 - License: **GPL-2.0-or-later**. The `LICENSE` file contains the unmodified GPLv2 text; project SPDX notices and the README explicitly grant GPLv2 *or (at the user's option) any later version*. Keep those statements consistent and do not change license terms without maintainer approval.
 - Maintainer: Flachzange. Status: **experimental, not production-validated**.
-- The module shall not depend on Node-RED, MQTT, polling, `notify`, or `dummy` devices for normal ingestion.
+- The module shall not depend on Node-RED, MQTT, polling, `notify`, or `dummy` devices for normal ingestion. WIFFI-pump control may use FHEM `HttpUtils_NonblockingGet` without introducing blocking commands or timers.
 - Generated releases belong under `dist/` and are not hand-edited or committed. Do not introduce a release layout until it is actually needed and tested.
 
 ## Evidence and communication
@@ -87,7 +87,7 @@ This repository develops an event-driven FHEM integration for the classic STALL 
 
 ## Tests: fidelity over green checks
 
-- The current minimal check is `prove -I t/lib t/parser.t t/device.t t/autocreate.t`; GitHub Actions also performs isolated Perl syntax checks. These checks do **not** establish that FHEM listener, callbacks, or lifecycle behavior works.
+- The current minimal check is `prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t`; GitHub Actions also performs isolated Perl syntax checks. These checks do **not** establish that FHEM listener, callbacks, or lifecycle behavior works.
 - Before presenting a collector implementation as ready, add integration-oriented tests that exercise real or faithfully modeled FHEM accept/read/dispatch/close behavior. Track any framework stubs' provenance and limitations.
 - A stub must reproduce *all relevant side effects* for the claim being tested (event publication, return handling, timer ownership, socket/FD registration, `%defs`, `%selectlist`, `CommandDelete`, etc.). A no-op stub must never be cited as evidence for behavior it omits.
 - Test: split and concatenated TCP telegrams; ETX/EOT and EOF; payloads without terminators; oversized and malformed frames; UTF-8, invalid JSON, missing/duplicate names; different firmware-type values; reconnect, duplicate MACs/IP conflicts; unknown and renamed devices; autocreate collision/injection.
@@ -123,6 +123,7 @@ These requirements are **WIFFI-specific**, not inherited from the other modules:
 
 - One shared TCP listener, logically separate devices keyed by validated/normalized device identity.
 - Initial protocol targets: WIFFI-pump 2, WEATHERMAN, two PULSECOUNTER2-LAN devices.
+- Only expose verified WIFFI-pump 2 HTTP `trigger:on:`, `trigger:off:`, and `trigger:<seconds>:` endpoints as setters; `on` means indefinitely on. Other module types remain read-only until their commands are established by evidence. Use observed TCP peer as a validated HTTP host, bound nonblocking requests, cancel pending work on undefine/modify, and never synthesize pump state from HTTP responses. Test status and peer identity handling as well as command input validation. Do not expose arbitrary URL/parameter commands.
 - Only `homematic_name` determines sensor reading names; do not preserve earlier Node-RED/MQTT alias names as implicit compatibility output.
 - Sender heartbeat `Systeminfo_sec_seit_reset` should remain usable for external watchdogs; no implicit polling.
 - Existing Node-RED-to-MQTT devices must remain untouched during development and one-by-one migration.
