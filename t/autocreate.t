@@ -106,12 +106,12 @@ is($device->{READINGS}{w_counter1}{VAL}, '12.500', 'native CCU reading updated')
 is($device->{READINGS}{Systeminfo_sec_seit_reset}{VAL}, '120', 'heartbeat is present');
 ok($device->{FUUID}, 'FHEM CommandDefine assigned a synthetic identity');
 is($attr{WIFFI_020000000001}{room}, 'WIFFI', 'autocreated device has WIFFI room');
-ok(!exists $attr{WIFFI_020000000001}{'event-on-change-reading'},
-  'default leaves FHEM change event behavior alone');
-ok(!exists $attr{WIFFI_020000000001}{'event-on-update-reading'},
-  'default leaves FHEM update event behavior alone');
-ok(!exists $attr{WIFFI_020000000001}{DbLogExclude},
-  'default leaves DbLog event filtering alone');
+is($attr{WIFFI_020000000001}{'event-on-change-reading'}, '.*',
+  'non-pump receives change-only events by default');
+is($attr{WIFFI_020000000001}{'event-on-update-reading'},
+  'Systeminfo_sec_seit_reset', 'heartbeat events remain visible');
+is($attr{WIFFI_020000000001}{DbLogExclude},
+  '^Systeminfo_sec_seit_reset$', 'heartbeat is excluded from DbLog');
 ok(!exists $attr{WIFFI_020000000001}{stateFormat},
   'non-pump autocreate does not impose stateFormat');
 ok(!exists $attr{WIFFI_020000000001}{devStateIcon},
@@ -247,11 +247,12 @@ is($attr{$pump_name}{stateFormat}, 'wiffi_pump',
 is($attr{$pump_name}{devStateIcon}, 'true:on false:off',
   'pump devStateIcon matches requested on/off symbols');
 ok(!exists $attr{$pump_name}{webCmd}, 'webCmd not imposed');
-ok(!exists $attr{$pump_name}{DbLogExclude}, 'pump has no default DbLog filter');
-ok(!exists $attr{$pump_name}{'event-on-change-reading'},
-  'pump has no default event change filter');
-ok(!exists $attr{$pump_name}{'event-on-update-reading'},
-  'pump has no default event update filter');
+is($attr{$pump_name}{DbLogExclude}, '^Systeminfo_sec_seit_reset$',
+  'pump heartbeat excluded from DbLog');
+is($attr{$pump_name}{'event-on-change-reading'}, '.*',
+  'pump change-only event default');
+is($attr{$pump_name}{'event-on-update-reading'},
+  'Systeminfo_sec_seit_reset', 'pump heartbeat remains eventful');
 is($server->{AUTOCREATED}, 1, 'pump created exactly once');
 $attr{$pump_name}{devStateIcon} = 'true:custom_on false:custom_off';
 $attr{$pump_name}{stateFormat} = 'online';
@@ -270,6 +271,9 @@ $on_define = sub {
   $attr{$_[0]}{stateFormat} = 'custom';
   $attr{$_[0]}{devStateIcon} = 'true:my_on false:my_off';
   $attr{$_[0]}{room} = 'Warmwasser';
+  $attr{$_[0]}{DbLogExclude} = '^my_custom$';
+  $attr{$_[0]}{'event-on-change-reading'} = 'wiffi_pump';
+  $attr{$_[0]}{'event-on-update-reading'} = 'wiffi_ntc';
 };
 WIFFI_Collector_ProcessFrame($server,
   telegram('02:00:00:00:00:04', '192.0.2.24', '3', 'wiffi-pump'), '192.0.2.24');
@@ -279,6 +283,12 @@ is($attr{$custom_name}{stateFormat}, 'custom', 'custom stateFormat not overridde
 is($attr{$custom_name}{devStateIcon}, 'true:my_on false:my_off',
   'custom devStateIcon not overridden');
 is($attr{$custom_name}{room}, 'Warmwasser', 'custom room not overridden');
+is($attr{$custom_name}{DbLogExclude}, '^my_custom$',
+  'DEFINED DbLogExclude is not overwritten');
+is($attr{$custom_name}{'event-on-change-reading'}, 'wiffi_pump',
+  'DEFINED event-on-change-reading is not overwritten');
+is($attr{$custom_name}{'event-on-update-reading'}, 'wiffi_ntc',
+  'DEFINED event-on-update-reading is not overwritten');
 
 # Reentrant deletion during device-type-specific default ATTR is handled.
 $server = start_case();
