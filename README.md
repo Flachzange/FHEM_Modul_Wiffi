@@ -6,7 +6,7 @@ Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:
 
 - One `WIFFI_Collector` listens on a shared TCP port, using FHEM's `TcpServerUtils`, and contains the shared JSON parser.
 - One logical `WIFFI_DEVICE` per MAC address; optional automatic creation on the first valid telegram, disabled by default.
-- Uses `vars[].homematic_name` **unchanged** as the FHEM reading name.
+- Uses `vars[].homematic_name` as the FHEM reading name by default. Optionally removes only the leading `w_` per device using `stripReadingPrefix`.
 - Exposes `Systeminfo` fields with a `Systeminfo_` prefix.
 - Reassembles stream fragments delimited by ETX (`0x03`) or EOT (`0x04`); attempts any remaining JSON on TCP EOF.
 - Accepts malformed frames only as errors, never applies partial updates.
@@ -53,6 +53,20 @@ define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector B4:E6:2D:17:DB:07
 For devices already created while the earlier **unfiltered** autocreate defaults were active (such as `WIFFI_DEADBEEFFE00`), add the three attributes manually if desired. For an unfiltered device, remove them using `deleteattr <device> <attribute>`. Updating the collector does **not** retrofit attributes onto existing devices.
 
 The module does not alter attributes on existing devices or edit existing MQTT2 devices.
+
+### Optional reading-name normalization
+
+To consistently omit the firmware-specific `w_` prefix on an individual device:
+
+```text
+attr WIFFI_WEATHERMAN stripReadingPrefix 1
+```
+
+This maps `w_temperatur` to `temperatur`, `w_lux` to `lux` and `w_counter1` to `counter1`; `wiffi_pump`, `Systeminfo_sec_seit_reset` and names without the exact leading `w_` remain unchanged. Default is `0`, preserving the original names on other devices (including existing PULSECOUNTERs and pumps). The `desc` JSON field is never used for naming.
+
+When two original names would produce the same target name (for example `w_lux` and `lux`), or an incoming name would map to FHEM's reserved `state`, the entire telegram is rejected before updating any readings. The collector counts this as `FRAMES_ERROR`.
+
+Switching the attribute does **not** remove already-existing old readings from the device. Check and update any `stateFormat`, `userReadings`, plots and automation references; then delete stale old readings manually if desired. This option does not recreate old MQTT reading names: e.g. `lux` differs from the former Node-RED `helligkeit`.
 
 ### Direct control of WIFFI-pump 2
 

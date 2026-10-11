@@ -299,6 +299,73 @@ WIFFI_Collector_ProcessFrame($server,
 is($server->{AUTOCREATED}, 0, 'pump deleted during stateFormat setup is not counted');
 is($server->{FRAMES_UNKNOWN}, 1, 'deleted pump telegram not assigned');
 
+# stripReadingPrefix is opt-in and affects only a leading "w_" on that device.
+$server = start_case();
+my $weather_name = 'WIFFI_WEATHERMAN';
+is(CommandDefine(undef,
+    "$weather_name WIFFI_DEVICE Collector 02:00:00:00:00:06"),
+  undef, 'explicit WEATHERMAN defined');
+my $weather = $defs{$weather_name};
+my $weather_raw = JSON::PP::encode_json({
+  modultyp => 'weatherman',
+  vars => [
+    {homematic_name => 'w_temperatur', value => '12.2'},
+    {homematic_name => 'w_lux', value => '1747.2'},
+    {homematic_name => 'wiffi_pump', value => 'false'},
+  ],
+  Systeminfo => {'MAC-Adresse' => '02:00:00:00:00:06',
+    sec_seit_reset => '123'}
+});
+WIFFI_Collector_ProcessFrame($server, $weather_raw, '192.0.2.26');
+is($weather->{READINGS}{w_temperatur}{VAL}, '12.2',
+  'default keeps native w_ reading names');
+ok(!exists $weather->{READINGS}{temperatur},
+  'no derived reading when opt-in is absent');
+is($server->{FRAMES_OK}, 1, 'default-name telegram counted as accepted');
+
+$attr{$weather_name}{stripReadingPrefix} = 1;
+WIFFI_Collector_ProcessFrame($server, $weather_raw, '192.0.2.26');
+is($weather->{READINGS}{temperatur}{VAL}, '12.2',
+  'opt-in strips w_ from temperature');
+is($weather->{READINGS}{lux}{VAL}, '1747.2',
+  'opt-in strips w_ from brightness');
+is($weather->{READINGS}{wiffi_pump}{VAL}, 'false',
+  'prefix wiffi_ remains untouched');
+is($weather->{READINGS}{Systeminfo_sec_seit_reset}{VAL}, '123',
+  'Systeminfo prefix unchanged');
+is($server->{FRAMES_OK}, 2, 'mapped telegram counted as accepted');
+
+my $collision_raw = JSON::PP::encode_json({
+  modultyp => 'weatherman',
+  vars => [
+    {homematic_name => 'w_lux', value => '9999'},
+    {homematic_name => 'lux', value => '5555'},
+  ],
+  Systeminfo => {'MAC-Adresse' => '02:00:00:00:00:06',
+    sec_seit_reset => '999'}
+});
+my $previous_error = $server->{FRAMES_ERROR};
+WIFFI_Collector_ProcessFrame($server, $collision_raw, '192.0.2.26');
+is($server->{FRAMES_ERROR}, $previous_error+1,
+  'mapped name collision rejects entire telegram');
+is($server->{FRAMES_OK}, 2, 'collision does not count as success');
+is($weather->{READINGS}{lux}{VAL}, '1747.2',
+  'collision never writes partial weather values');
+is($weather->{READINGS}{Systeminfo_sec_seit_reset}{VAL}, '123',
+  'collision never updates heartbeat');
+
+my $reserved_raw = JSON::PP::encode_json({
+  modultyp => 'weatherman',
+  vars => [{homematic_name => 'w_state', value => 'bad'}],
+  Systeminfo => {'MAC-Adresse' => '02:00:00:00:00:06'}
+});
+$previous_error = $server->{FRAMES_ERROR};
+WIFFI_Collector_ProcessFrame($server, $reserved_raw, '192.0.2.26');
+is($server->{FRAMES_ERROR}, $previous_error+1,
+  'mapped state reading cannot overwrite device state');
+is($weather->{READINGS}{state}{VAL}, 'online',
+  'reserved-name packet leaves device state unchanged');
+
 # Malformed telegrams cannot autocreate.
 $server = start_case();
 $attr{Collector}{autocreate} = 1;

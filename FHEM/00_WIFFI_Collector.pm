@@ -272,7 +272,10 @@ sub WIFFI_Collector_ProcessFrame {
   }
   # WIFFI_DEVICE_Process stores the peer and module identity before
   # publishing readings, which may trigger reentrant FHEM callbacks.
-  WIFFI_DEVICE_Process($device, $packet, $peer);
+  if (!WIFFI_DEVICE_Process($device, $packet, $peer)) {
+    $server->{FRAMES_ERROR}++;
+    return;
+  }
   $server->{FRAMES_OK}++;
 }
 1;

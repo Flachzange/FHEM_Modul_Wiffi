@@ -11,7 +11,7 @@ sub WIFFI_DEVICE_Initialize {
   $hash->{DefFn} = 'WIFFI_DEVICE_Define';
   $hash->{UndefFn} = 'WIFFI_DEVICE_Undef';
   $hash->{SetFn} = 'WIFFI_DEVICE_Set';
-  $hash->{AttrList} = $readingFnAttributes;
+  $hash->{AttrList} = 'stripReadingPrefix:0,1 '.$readingFnAttributes;
 }
 
 sub WIFFI_DEVICE_Define {
@@ -135,13 +135,29 @@ sub WIFFI_DEVICE_HttpDone {
 
 sub WIFFI_DEVICE_Process {
   my ($hash, $data, $peer) = @_;
+
+  # Optional, per-device naming convention. Validate the full mapping before
+  # publishing anything: both "w_foo" and "foo" may exist in one telegram.
+  my $strip = AttrVal($hash->{NAME}, 'stripReadingPrefix', 0) eq '1';
+  my %mapped;
+  for my $reading (keys %{$data->{readings}}) {
+    my $name = $reading;
+    $name =~ s/\Aw_// if $strip;
+    if ($name eq '' || $name eq 'state' || exists $mapped{$name}) {
+      Log3($hash, 2, "$hash->{NAME}: WIFFI reading name collision or reserved name: $reading -> $name");
+      return 0;
+    }
+    $mapped{$name} = $data->{readings}{$reading};
+  }
+
   $hash->{PEER} = $peer;
   $hash->{MODULTYP} = $data->{modultyp};
   readingsBeginUpdate($hash);
-  for my $reading (sort keys %{$data->{readings}}) {
-    readingsBulkUpdate($hash, $reading, $data->{readings}{$reading});
+  for my $reading (sort keys %mapped) {
+    readingsBulkUpdate($hash, $reading, $mapped{$reading});
   }
   readingsBulkUpdate($hash, 'state', 'online');
   readingsEndUpdate($hash, 1);
+  return 1;
 }
 1;
