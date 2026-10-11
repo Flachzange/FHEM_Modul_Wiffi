@@ -4,7 +4,7 @@ package main;
 use strict;
 use warnings;
 use HttpUtils;
-use vars qw($readingFnAttributes);
+use vars qw(%defs $readingFnAttributes);
 
 sub WIFFI_DEVICE_Initialize {
   my ($hash) = @_;
@@ -83,7 +83,7 @@ sub WIFFI_DEVICE_Set {
   my @octets = split /\./, $peer, -1;
   return 'No valid WIFFI TCP peer yet; wait for a fresh telegram'
     unless @octets == 4
-      && !grep { $_ !~ /\A[0-9]{1,3}\z/ || $_ > 255 } @octets
+      && !(grep { $_ !~ /\A[0-9]{1,3}\z/ || $_ > 255 } @octets)
       && $octets[0] >= 1 && $octets[0] <= 223
       && $octets[0] != 127;
 
