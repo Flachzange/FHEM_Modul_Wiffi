@@ -12,7 +12,7 @@ This repository develops an event-driven FHEM integration for the classic STALL 
 - Module types: `WIFFI_Collector` and `WIFFI_DEVICE`. Keep FHEM callback/global function prefixes `WIFFI_Collector_` and `WIFFI_DEVICE_`; shared parser functions use the `WIFFI_Collector_` prefix in the collector module. Ensure they are available even when `WIFFI_DEVICE` is defined before the collector.
 - License: **GPL-2.0-or-later**. The `LICENSE` file contains the unmodified GPLv2 text; project SPDX notices and the README explicitly grant GPLv2 *or (at the user's option) any later version*. Keep those statements consistent and do not change license terms without maintainer approval.
 - Maintainer: Flachzange. Status: **experimental, not production-validated**.
-- The module shall not depend on Node-RED, MQTT, polling, `notify`, or `dummy` devices for normal ingestion. WIFFI-pump control may use FHEM `HttpUtils_NonblockingGet` without introducing blocking commands or timers.
+- The module shall not depend on Node-RED, MQTT, polling, `notify`, or `dummy` devices for normal ingestion. WIFFI HTTP control uses FHEM `HttpUtils_NonblockingGet` without introducing blocking commands or timers.
 - Generated releases belong under `dist/` and are not hand-edited or committed. Do not introduce a release layout until it is actually needed and tested.
 
 ## Evidence and communication
@@ -123,7 +123,7 @@ These requirements are **WIFFI-specific**, not inherited from the other modules:
 
 - One shared TCP listener, logically separate devices keyed by validated/normalized device identity.
 - Initial protocol targets: WIFFI-pump 2, WEATHERMAN, two PULSECOUNTER2-LAN devices.
-- Only expose verified WIFFI-pump 2 HTTP `trigger:on:`, `trigger:off:`, and `trigger:<seconds>:` endpoints as setters; `on` means indefinitely on. Other module types remain read-only until their commands are established by evidence. Use observed TCP peer as a validated HTTP host, bound nonblocking requests, cancel pending work on undefine/modify, and never synthesize pump state from HTTP responses. Test status and peer identity handling as well as command input validation. Do not expose arbitrary URL/parameter commands.
+- Expose verified WIFFI-pump 2 convenience setters for `trigger:on:`, `trigger:off:`, and `trigger:<seconds>:`; `on` means indefinitely on. All WIFFI types may expose the deliberately explicit expert `httpGet` command accepting a single validated relative path/query. This command can alter device configuration, so never present it as read-only. Use only the observed validated IPv4 TCP peer as the HTTP host and default port 80, never user-provided scheme/host/port. Disable redirects via FHEM HttpUtils `ignoreredirects => 1` (verified in mhop/fhem-mirror `fhem/FHEM/HttpUtils.pm`); bound length/timeout, reject whitespace, control characters, backslashes, fragments and malformed percent encoding; never synthesize state from HTTP replies. Cancel pending requests on undefine/modify and test concurrent sends, unknown types, redirects and hostile paths. Never expose unrestricted arbitrary absolute URLs or POST.
 - Only `homematic_name` determines sensor reading names; do not preserve earlier Node-RED/MQTT alias names as implicit compatibility output.
 - Sender heartbeat `Systeminfo_sec_seit_reset` should remain usable for external watchdogs; no implicit polling.
 - Existing Node-RED-to-MQTT devices must remain untouched during development and one-by-one migration.
