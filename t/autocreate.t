@@ -121,7 +121,11 @@ WIFFI_Collector_ProcessFrame($server,
   telegram('02:00:00:00:00:01', '192.0.2.21', '12.760'), '192.0.2.21');
 is($attr{WIFFI_020000000001}{room}, 'Energie',
   'autocreate does not overwrite existing custom room');
-$attr{WIFFI_020000000001}{DbLogExclude} = '^w_counterIP
+$attr{WIFFI_020000000001}{DbLogExclude} = '^w_counterIP$';
+WIFFI_Collector_ProcessFrame($server,
+  telegram('02:00:00:00:00:01', '192.0.2.21', '12.770'), '192.0.2.21');
+is($attr{WIFFI_020000000001}{DbLogExclude}, '^w_counterIP$',
+   'user-configured DbLogExclude is not overwritten by further telegrams');
 is($device->{READINGS}{w_counter1}{VAL}, '12.770', 'known device updated');
 
 # A renamed device is resolved by its MAC, not by the old generated name.
