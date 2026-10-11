@@ -112,6 +112,10 @@ ok(!exists $attr{WIFFI_020000000001}{'event-on-update-reading'},
   'default leaves FHEM update event behavior alone');
 ok(!exists $attr{WIFFI_020000000001}{DbLogExclude},
   'default leaves DbLog event filtering alone');
+ok(!exists $attr{WIFFI_020000000001}{stateFormat},
+  'non-pump autocreate does not impose stateFormat');
+ok(!exists $attr{WIFFI_020000000001}{devStateIcon},
+  'non-pump autocreate does not impose a device icon');
 
 WIFFI_Collector_ProcessFrame($server,
   telegram('2:0:0:0:0:1', '192.0.2.21', '12.750'), '192.0.2.21');
@@ -230,6 +234,60 @@ WIFFI_Collector_ProcessFrame($server,
 ok($defs{WIFFI_020000000001} && $defs{WIFFI_060000000001},
   'distinct full-MAC names for same trailing bytes');
 is($definitions, 2, 'both devices created once');
+
+# Only a newly autocreated WIFFI-pump receives pump display defaults.
+$server = start_case();
+$attr{Collector}{autocreate} = 1;
+WIFFI_Collector_ProcessFrame($server,
+  telegram('02:00:00:00:00:03', '192.0.2.23', '1', 'wiffi-pump'), '192.0.2.23');
+my $pump_name = 'WIFFI_020000000003';
+is($attr{$pump_name}{room}, 'WIFFI', 'pump assigned to WIFFI room');
+is($attr{$pump_name}{stateFormat}, 'wiffi_pump',
+  'pump stateFormat reflects real pump reading');
+is($attr{$pump_name}{devStateIcon}, 'true:on false:off',
+  'pump devStateIcon matches requested on/off symbols');
+ok(!exists $attr{$pump_name}{webCmd}, 'webCmd not imposed');
+ok(!exists $attr{$pump_name}{DbLogExclude}, 'pump has no default DbLog filter');
+ok(!exists $attr{$pump_name}{'event-on-change-reading'},
+  'pump has no default event change filter');
+ok(!exists $attr{$pump_name}{'event-on-update-reading'},
+  'pump has no default event update filter');
+is($server->{AUTOCREATED}, 1, 'pump created exactly once');
+$attr{$pump_name}{devStateIcon} = 'true:custom_on false:custom_off';
+$attr{$pump_name}{stateFormat} = 'online';
+WIFFI_Collector_ProcessFrame($server,
+  telegram('02:00:00:00:00:03', '192.0.2.23', '2', 'wiffi-pump'), '192.0.2.23');
+is($attr{$pump_name}{devStateIcon}, 'true:custom_on false:custom_off',
+  'later telegrams preserve custom pump icon');
+is($attr{$pump_name}{stateFormat}, 'online',
+  'later telegrams preserve custom pump state format');
+is($server->{AUTOCREATED}, 1, 'repeat pump telegram does not autocreate again');
+
+# DEFINED handlers can set their own defaults before autocreate applies ours.
+$server = start_case();
+$attr{Collector}{autocreate} = 1;
+$on_define = sub {
+  $attr{$_[0]}{stateFormat} = 'custom';
+  $attr{$_[0]}{devStateIcon} = 'true:my_on false:my_off';
+  $attr{$_[0]}{room} = 'Warmwasser';
+};
+WIFFI_Collector_ProcessFrame($server,
+  telegram('02:00:00:00:00:04', '192.0.2.24', '3', 'wiffi-pump'), '192.0.2.24');
+my $custom_name = 'WIFFI_020000000004';
+is($server->{AUTOCREATED}, 1, 'pump created with DEFINED custom attributes');
+is($attr{$custom_name}{stateFormat}, 'custom', 'custom stateFormat not overridden');
+is($attr{$custom_name}{devStateIcon}, 'true:my_on false:my_off',
+  'custom devStateIcon not overridden');
+is($attr{$custom_name}{room}, 'Warmwasser', 'custom room not overridden');
+
+# Reentrant deletion during device-type-specific default ATTR is handled.
+$server = start_case();
+$attr{Collector}{autocreate} = 1;
+$on_attr = sub { delete $defs{$_[0]} if $_[1] eq 'stateFormat' };
+WIFFI_Collector_ProcessFrame($server,
+  telegram('02:00:00:00:00:05', '192.0.2.25', '4', 'wiffi-pump'), '192.0.2.25');
+is($server->{AUTOCREATED}, 0, 'pump deleted during stateFormat setup is not counted');
+is($server->{FRAMES_UNKNOWN}, 1, 'deleted pump telegram not assigned');
 
 # Malformed telegrams cannot autocreate.
 $server = start_case();
