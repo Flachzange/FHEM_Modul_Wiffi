@@ -1,6 +1,6 @@
 # FHEM WIFFI Collector (early prototype)
 
-Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:** direct FHEM TCP reception, autocreate and repeated readings updates were observed on a real WIFFI-pump 2 on 2026-10-10. Other WIFFI models, runtime lifecycle and failure paths still need testing.
+Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:** direct FHEM TCP reception, autocreate and repeated readings updates were observed on a real WIFFI-pump 2 on 2026-10-10. A WEATHERMAN also supplied live TCP readings in an actual FHEM installation on 2026-10-11. Other device/firmware variants, runtime lifecycle and failure paths still need testing.
 
 ## Design
 
@@ -67,6 +67,40 @@ This maps `w_temperatur` to `temperatur`, `w_lux` to `lux` and `w_counter1` to `
 When two original names would produce the same target name (for example `w_lux` and `lux`), or an incoming name would map to FHEM's reserved `state`, the entire telegram is rejected before updating any readings. The collector counts this as `FRAMES_ERROR`.
 
 Switching the attribute does **not** remove already-existing old readings from the device. Check and update any `stateFormat`, `userReadings`, plots and automation references; then delete stale old readings manually if desired. This option does not recreate old MQTT reading names: e.g. `lux` differs from the former Node-RED `helligkeit`.
+
+### WEATHERMAN integration: readings, events and DbLog (field notes, 2026-10-11)
+
+The following is an **installation example**, not a module default or a promise about all firmware versions. A WEATHERMAN sending valid TCP telegrams was observed with `stripReadingPrefix 1`. The native names come from `vars[].homematic_name`, *not* `desc` or the former Node-RED MQTT aliases:
+
+| Former MQTT reading | Native FHEM reading |
+| --- | --- |
+| `aussentemperatur` | `temperatur` |
+| `rel_feuchte`, `abs_feuchte` | `feuchte_rel`, `feuchte_abs` |
+| `helligkeit` | `lux` |
+| `regenstatus` | `regenmelder` |
+| `regen_pro_h` | `regen_letzte_h` |
+| `nn_luftdruck` | `barometer` |
+| `peak_windgeschwindigkeit` | `wind_spitze` |
+| `avg_windgeschwindigkeit` | `wind_mittel` |
+| `windwinkel` | `wind_dir` |
+| `sonne_azimut`, `sonne_elevation` | `azimut`, `elevation` |
+
+Other observed native readings include `regenstaerke`, `sonne_scheint` and `windchill`. Verify the actual `list <device>` output before updating downstream consumers. The site-specific `temperature` and `brightness` aliases and the moving averages `windwinkel.av`, `windwinkel.avH`, `peak_windgeschwindigkeit.av` were created with **FHEM `userReadings`**, not by this module. The average wind direction uses a separate circular-mean helper because 0° and 360° are equivalent.
+
+Example **event policy** for a site needing fresh plot samples even while sensor values remain unchanged:
+
+```text
+attr WIFFI_WEATHERMAN stripReadingPrefix 1
+attr WIFFI_WEATHERMAN event-on-change-reading (?!Systeminfo_zeitpunkt$).*
+attr WIFFI_WEATHERMAN event-on-update-reading Systeminfo_sec_seit_reset
+attr WIFFI_WEATHERMAN event-min-interval ^(lux|wind_dir|wind_mittel|wind_spitze)$:60,^(temperatur|feuchte_rel|feuchte_abs|barometer|regenmelder|regenstaerke|regen_letzte_h|sonne_scheint)$:300
+```
+
+With `event-on-change-reading`, **real value changes remain immediate** (e.g. `regenmelder false -> true`); `event-min-interval` also emits unchanged readings after the configured interval *when a new telegram arrives*. It is **not a fixed polling scheduler** and is **not a general upper rate limit for changing readings**. The explicitly listed `Systeminfo_sec_seit_reset` update event serves as a heartbeat; exclude it from DbLog when not needed in history.
+
+**DbLog filtering is separate from event generation.** High-frequency wind changes can still produce many database records even with `event-min-interval`. To cap only database writes, an optional `DbLogExclude` entry such as `^(wind_dir|wind_mittel|windwinkel[.]av|peak_windgeschwindigkeit[.]av)$:60:force` may be **appended to existing exclusions**. Do not overwrite the existing `DbLogExclude` list when adding it. `wind_spitze` may intentionally remain unthrottled in history to preserve short gusts. This extra wind-history limit was proposed during the field test; its deployment was **not confirmed**.
+
+When migrating FHEM DOIF/notify/SVG references, keep display titles such as `title 'Weatherman'` unchanged, but update every `#logdb Weatherman:old_reading` source to a **verified** native reading. In one installation the active SVG configurations were checked after the migration, with no remaining references to the old MQTT `Weatherman` data source. Test alarm/awning control conditions and DOIF `wait` independently before removing the old MQTT device.
 
 ### Direct control of WIFFI-pump 2
 
