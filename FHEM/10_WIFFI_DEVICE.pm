@@ -50,26 +50,35 @@ sub WIFFI_DEVICE_Undef {
   return undef;
 }
 
-# Only WIFFI-pump 2 has a verified HTTP control protocol here.
-# HTTP responses merely acknowledge transport; wiffi_pump remains the
-# authoritative state, updated exclusively by subsequent TCP telemetry.
+# Every WIFFI supports an explicit relative HTTP GET path. The documented
+# pump shortcuts are intentionally available only for type wiffi-pump.
+# HTTP responses never change the authoritative telemetry-driven readings.
 sub WIFFI_DEVICE_Set {
   my ($hash, $name, $cmd, @args) = @_;
-  return "No set commands for this WIFFI type"
-    unless ($hash->{MODULTYP} // '') eq 'wiffi-pump';
-  my $choices = 'on off on-for-timer';
-  return "Unknown argument $cmd, choose one of $choices"
-    unless defined $cmd && $cmd =~ /\A(?:on|off|on-for-timer)\z/;
+  my $pump = ($hash->{MODULTYP} // '') eq 'wiffi-pump';
+  my $choices = $pump ? 'on off on-for-timer httpGet' : 'httpGet';
+  return "Unknown argument ".($cmd // '').", choose one of $choices"
+    unless defined $cmd && ($cmd eq 'httpGet'
+      || ($pump && $cmd =~ /\A(?:on|off|on-for-timer)\z/));
 
-  my $value;
-  if ($cmd eq 'on-for-timer') {
+  my $path;
+  if ($cmd eq 'httpGet') {
+    # Relative path and query only: no host, port, scheme, fragments,
+    # control characters, whitespace, or malformed percent escapes.
+    return 'Usage: set <device> httpGet </path[?query]>'
+      unless @args == 1
+        && length($args[0]) <= 2048
+        && $args[0] =~ m{\A/(?!/)[A-Za-z0-9._~%!$&'()*+,;=:@/?-]*\z}
+        && $args[0] !~ /%(?![0-9A-Fa-f]{2})/;
+    $path = $args[0];
+  } elsif ($cmd eq 'on-for-timer') {
     return 'Usage: set <device> on-for-timer <seconds (1..3600)>'
       unless @args == 1 && $args[0] =~ /\A[1-9][0-9]{0,3}\z/
         && $args[0] <= 3600;
-    $value = $args[0];
+    $path = "/?trigger:$args[0]:";
   } else {
     return "Usage: set <device> $cmd" if @args;
-    $value = $cmd;
+    $path = "/?trigger:$cmd:";
   }
 
   my $collector = $defs{$hash->{COLLECTOR}};
@@ -88,9 +97,10 @@ sub WIFFI_DEVICE_Set {
       && $octets[0] != 127;
 
   my $param = {
-    url      => "http://$peer/?trigger:$value:",
+    url      => "http://$peer$path",
     method   => 'GET',
     timeout  => 5,
+    ignoreredirects => 1,
     hash     => $hash,
     command  => $cmd,
     callback => \&WIFFI_DEVICE_HttpDone,
