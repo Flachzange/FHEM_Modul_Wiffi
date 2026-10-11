@@ -221,13 +221,26 @@ sub WIFFI_Collector_ProcessFrame {
         if ($created && $created->{TYPE} eq 'WIFFI_DEVICE'
             && ($created->{COLLECTOR} // '') eq $server->{NAME}
             && ($created->{MAC} // '') eq $packet->{mac}) {
-          # Group new devices without changing native FHEM event/DbLog
-          # behavior. Users decide if any filtering is appropriate.
-          my $attr_error = CommandAttr(undef, "$name room WIFFI");
-          Log3($server, 2, "$server->{NAME}: default room failed: $attr_error")
-            if $attr_error;
-          # ATTR notifications may remove or rename the new device.
-          $created = undef if !$defs{$name} || $defs{$name} != $created;
+          # Defaults apply only at creation, never to existing devices.
+          # WIFFI-pump uses its real pump feedback for FHEMWEB status.
+          # Do not override attributes set by a DEFINED event handler.
+          my @defaults = (['room', 'WIFFI']);
+          if ($packet->{modultyp} eq 'wiffi-pump') {
+            push @defaults, ['stateFormat', 'wiffi_pump'],
+                            ['devStateIcon', 'true:on false:off'];
+          }
+          for my $default (@defaults) {
+            my ($key, $value) = @$default;
+            next if defined AttrVal($name, $key, undef);
+            my $attr_error = CommandAttr(undef, "$name $key $value");
+            Log3($server, 2, "$server->{NAME}: default attr $key failed: $attr_error")
+              if $attr_error;
+            # ATTR notifications may remove or rename the new device.
+            if (!$defs{$name} || $defs{$name} != $created) {
+              $created = undef;
+              last;
+            }
+          }
           if ($created) {
             $device = $created;
             $server->{AUTOCREATED}++;
