@@ -45,6 +45,7 @@ is(scalar @calls, 1, 'single nonblocking HTTP request');
 is($calls[0]{url}, 'http://192.0.2.21/?trigger:on:', 'on uses documented WIFFI command');
 is($calls[0]{method}, 'GET', 'uses HTTP GET');
 is($calls[0]{timeout}, 5, 'HTTP request bounded by timeout');
+is($calls[0]{ignoreredirects}, 1, 'HTTP redirect following disabled even for shortcuts');
 is($device->{READINGS}{wiffi_pump}{VAL}, 'false',
    'set does not optimistically change the reported pump state');
 like(WIFFI_DEVICE_Set($device,'Pump','off'), qr/pending/, 'reject concurrent commands');
@@ -100,9 +101,61 @@ like(WIFFI_DEVICE_Set($device,'Pump','on'),qr/collector is not defined/,
   'no command with missing associated collector');
 $defs{Collector} = { NAME=>'Collector', TYPE=>'WIFFI_Collector' };
 $device->{MODULTYP} = 'WEATHERMAN';
-like(WIFFI_DEVICE_Set($device,'Pump','on'),qr/No set commands/,
-  'no pump commands on other WIFFI types');
+like(WIFFI_DEVICE_Set($device,'Pump','on'),qr/Unknown argument.*httpGet/,
+  'no pump shortcuts on other WIFFI types');
+my $generic = WIFFI_DEVICE_Set($device,'Pump','httpGet','/?param:0:240:');
+is($generic, undef, 'generic GET accepted on WEATHERMAN');
+my $get = $calls[-1];
+is($get->{url}, 'http://192.0.2.21/?param:0:240:',
+  'generic GET uses only learned TCP peer and supplied relative path');
+is($get->{ignoreredirects}, 1, 'generic GET cannot follow a redirect off-device');
+is($get->{method}, 'GET', 'generic setter is GET-only');
+$get->{code} = 200;
+$get->{callback}->($get, '', 'ok');
+ok(!exists $device->{'.WIFFI_HTTP'}, 'generic callback releases pending command');
+
+for my $bad (
+  'https://example.com/?reset:',
+  '//evil.example/?reset:',
+  'http://192.0.2.3/',
+  'reset:',
+  '/ok#fragment',
+  "/foo\ninjection",
+  '/bad%escape',
+  '/bad%0',
+  '/back\\slash',
+  ' ',
+  '/' . ('a' x 2049)
+) {
+  like(WIFFI_DEVICE_Set($device,'Pump','httpGet',$bad),qr/Usage/,
+    "generic GET rejects unsafe path");
+}
+like(WIFFI_DEVICE_Set($device,'Pump','httpGet'),qr/Usage/,
+  'generic GET requires exactly one path');
+like(WIFFI_DEVICE_Set($device,'Pump','httpGet','/ok','/extra'),qr/Usage/,
+  'generic GET rejects multiple path arguments');
+is(scalar @calls, 4, 'invalid generic GET arguments never initiate HTTP');
+
+$generic = WIFFI_DEVICE_Set($device,'Pump','httpGet','/status?key=a%20b&v=1');
+is($generic, undef, 'encoded query GET accepted');
+$get = $calls[-1];
+is($get->{url}, 'http://192.0.2.21/status?key=a%20b&v=1',
+  'allowed query remains byte-for-byte unchanged');
+like(WIFFI_DEVICE_Set($device,'Pump','httpGet','/'),qr/pending/,
+  'generic GET shares the single in-flight request slot with shortcuts');
+$get->{code} = 302;
+$get->{callback}->($get,'','');
+like(join(' ', @logs), qr/HTTP status 302/,
+  'HTTP redirects are reported, not followed or treated as success');
 $device->{MODULTYP} = 'wiffi-pump';
+
+my $pumpGet = WIFFI_DEVICE_Set($device,'Pump','httpGet','/?trigger:120:');
+is($pumpGet, undef, 'generic GET also works with pump devices');
+my $pumpRequest = $calls[-1];
+is($pumpRequest->{url}, 'http://192.0.2.21/?trigger:120:',
+  'pump generic GET uses exact supplied command');
+$pumpRequest->{code} = 200;
+$pumpRequest->{callback}->($pumpRequest, '', '');
 
 $throw_http = 1;
 like(WIFFI_DEVICE_Set($device,'Pump','on'),qr/Failed to send/,
