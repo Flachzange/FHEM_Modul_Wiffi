@@ -68,7 +68,7 @@ sub WIFFI_DEVICE_Set {
     return 'Usage: set <device> httpGet </path[?query]>'
       unless @args == 1
         && length($args[0]) <= 2048
-        && $args[0] =~ m{\A/(?!/)[A-Za-z0-9._~%!$&'()*+,;=:@/?-]*\z}
+        && $args[0] =~ m{\A/(?!/)[A-Za-z0-9._~%!\$&'()*+,;=:@/?-]*\z}
         && $args[0] !~ /%(?![0-9A-Fa-f]{2})/;
     $path = $args[0];
   } elsif ($cmd eq 'on-for-timer') {
