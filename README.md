@@ -60,7 +60,20 @@ set WIFFI_PUMP2 off
 set WIFFI_PUMP2 on-for-timer 300
 ```
 
-The manufacturer documents the HTTP requests `/?trigger:on:` (switch on **indefinitely**), `/?trigger:off:` (switch off), and `/?trigger:300:` (switch on for 300 seconds). Duration is restricted by this module to an integer from 1 to 3600 seconds. These commands are deliberately limited to `wiffi-pump`; no generic URL or expert `param:` setter is exposed. Command references: [STALL WIFFI-pump-2 manual](https://www.stall.biz/project/wiffi-pump-2-die-intelligente-steuerung-der-zirkulationspumpe-mit-heizungsueberwachung/) and [STALL command reference PDF](https://www.stall.biz/wp-content/uploads/2016/08/wiffi_update_anleitung22-1.pdf). The manufacturer's changelog lists `wiffi_pump2_110` as a web-server stability update without major functional changes. Actual HTTP control still requires a live test on this firmware.
+The manufacturer documents the HTTP requests `/?trigger:on:` (switch on **indefinitely**), `/?trigger:off:` (switch off), and `/?trigger:300:` (switch on for 300 seconds). Duration is restricted by this module to an integer from 1 to 3600 seconds. The named pump shortcuts are deliberately limited to `wiffi-pump`; arbitrary paths use the separate device-independent `httpGet` setter. Command references: [STALL WIFFI-pump-2 manual](https://www.stall.biz/project/wiffi-pump-2-die-intelligente-steuerung-der-zirkulationspumpe-mit-heizungsueberwachung/) and [STALL command reference PDF](https://www.stall.biz/wp-content/uploads/2016/08/wiffi_update_anleitung22-1.pdf). The manufacturer's changelog lists `wiffi_pump2_110` as a web-server stability update without major functional changes. Actual HTTP control still requires a live test on this firmware.
+
+### Generic HTTP GET for every WIFFI device
+
+All logical `WIFFI_DEVICE` instances expose a device-bound HTTP GET setter independently of the reported module type:
+
+```text
+set WIFFI_PUMP2 httpGet /?trigger:120:
+set WIFFI_PUMP2 httpGet /?param:0:240:
+```
+
+The setter accepts exactly one **relative path beginning with `/`**, including an optional query. It always builds `http://<last-observed-TCP-peer><path>` (port 80). No scheme, hostname, destination port, fragment, whitespace, control characters, backslashes or malformed percent escapes are accepted. Maximum path/query length: 2048 characters. FHEM HttpUtils is instructed with `ignoreredirects => 1` to avoid HTTP redirects to other targets. It does not support POST, custom headers or request bodies.
+
+This is a low-level **configuration and control command**: issuing HTTP GET on a WIFFI can trigger actions such as a relay switch, network changes, reboot or factory reset, depending on the device and firmware. It is intentionally not limited to read-only paths. Use it only with commands you understand and on a trusted LAN. The module does not attempt to predict device support for a path, does not treat an HTTP 200 as confirmation of the physical action and does not modify incoming WIFFI readings.
 
 The HTTP request uses FHEM's asynchronous `HttpUtils_NonblockingGet` (no external `wget` or polling). It targets only the verified TCP peer address from the last incoming telegram, not the JSON-reported IP reading. Another command is refused while an HTTP request is outstanding (5-second timeout), and outstanding requests are canceled on undefine/modify. After a restart or modify, wait for a fresh TCP telegram before sending commands.
 
@@ -80,7 +93,7 @@ A successful HTTP request is **not confirmation that the relay changed state**. 
 ## Known limitations / pending work
 
 - Initial WIFFI-pump 2 live test passed; remaining WIFFI model variants, TCP framing edge cases, startup/reload/disable and failure recovery require real FHEM integration tests.
-- Pump HTTP commands are implemented but have **not yet been tested against actual WIFFI-pump hardware**; the live test so far covers inbound TCP telemetry only.
+- Pump and generic HTTP GET commands are implemented but have **not yet been tested against actual WIFFI hardware**; the live test so far covers inbound TCP telemetry only.
 - No timer-based offline detector: consumers may use the `Systeminfo_sec_seit_reset` reading age.
 - Statistics counters are internals on the collector; diagnostic readings and reload/modify/disable behavior need validation.
 - Automatic creation produces stable names from the **full MAC address**. Rename FHEM devices as desired; matching uses collector + MAC, not the name.
