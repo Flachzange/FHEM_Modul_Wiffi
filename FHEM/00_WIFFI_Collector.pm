@@ -221,24 +221,13 @@ sub WIFFI_Collector_ProcessFrame {
         if ($created && $created->{TYPE} eq 'WIFFI_DEVICE'
             && ($created->{COLLECTOR} // '') eq $server->{NAME}
             && ($created->{MAC} // '') eq $packet->{mac}) {
-          # Configure only newly autocreated devices. Ordinary changes create
-          # events; the heartbeat always creates an event but stays out of DbLog.
-          for my $attr (
-            ['room', 'WIFFI'],
-            ['event-on-change-reading', '.*'],
-            ['event-on-update-reading', 'Systeminfo_sec_seit_reset'],
-            ['DbLogExclude', '^Systeminfo_sec_seit_reset$']
-          ) {
-            my ($key, $value) = @$attr;
-            my $attr_error = CommandAttr(undef, "$name $key $value");
-            Log3($server, 2, "$server->{NAME}: default attr $key failed: $attr_error")
-              if $attr_error;
-            # ATTR notifications may also modify or remove the new device.
-            if (!$defs{$name} || $defs{$name} != $created) {
-              $created = undef;
-              last;
-            }
-          }
+          # Group new devices without changing native FHEM event/DbLog
+          # behavior. Users decide if any filtering is appropriate.
+          my $attr_error = CommandAttr(undef, "$name room WIFFI");
+          Log3($server, 2, "$server->{NAME}: default room failed: $attr_error")
+            if $attr_error;
+          # ATTR notifications may remove or rename the new device.
+          $created = undef if !$defs{$name} || $defs{$name} != $created;
           if ($created) {
             $device = $created;
             $server->{AUTOCREATED}++;
