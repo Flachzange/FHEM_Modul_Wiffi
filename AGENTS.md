@@ -65,7 +65,7 @@ This repository develops an event-driven FHEM integration for the classic STALL 
 - Use stable ownership evidence (for example FUUID) before any persistent overwrite/deletion/migration. Never adopt data merely because an old name is reused.
 - Prefer `readingsBeginUpdate`/`readingsBulkUpdate`/`readingsEndUpdate` for coherent per-telegram changes; verify how event-on-change/update attributes interact with value timestamps and downstream consumers.
 - Keep public diagnostic readings minimal. Avoid publishing redundant copies of raw JSON, protocol metadata, and internal counters as readings without a real user-facing need.
-- Prevent unnecessary events and DbLog growth without sacrificing fresh data or heartbeat observability. Avoid per-sensor custom timers.
+- Keep event and DbLog filtering **opt-in**: autocreate must not set `event-on-change-reading`, `event-on-update-reading`, or `DbLogExclude`. Native FHEM behavior is the default, including repeated heartbeat events. Users own event/DbLog filtering decisions; do not silently change existing attributes. Avoid per-sensor custom timers.
 - New dependencies require justification, documentation, and CI coverage. Do not introduce a generic framework or many single-purpose helpers where one clear path suffices.
 
 ## Development simplicity and scope
