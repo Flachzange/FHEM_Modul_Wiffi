@@ -191,7 +191,7 @@ is(scalar @events,1,'modify emits no second reading update');
 ok(exists $selectlist{'Collector.9295'},'modified listener remains healthy');
 
 ($server,$device)=reset_case();
-$on_update=sub { is(CommandDelete(undef,$client->{NAME}),undef,
+$on_update=sub { is(CommandDelete(undef,'Collector_reentrant_client-delete'),undef,
     'reentrant client deletion succeeds') };
 # Callback captures the assigned client name after setup; construction needs
 # the same deterministic name as send_frames().
