@@ -15,21 +15,46 @@ sub WIFFI_DEVICE_Initialize {
   $hash->{AttrFn} = 'WIFFI_DEVICE_Attr';
   $hash->{FW_detailFn} = 'WIFFI_DEVICE_FwDetail';
   $hash->{FW_deviceOverview} = 1;
-  $hash->{AttrList} = 'stripReadingPrefix:0,1 disable:0,1 '.$readingFnAttributes;
+  $hash->{AttrList} = 'IODev stripReadingPrefix:0,1 disable:0,1 '.$readingFnAttributes;
   return FHEM::Meta::InitMod(__FILE__, $hash);
 }
 
+# FHEM changes the IODev reference after AttrFn('set'), but does not
+# clear it on deleteattr. Keep accepted peer/HTTP control tied to the active
+# collector, not to a stale address from another IO device.
 sub WIFFI_DEVICE_Attr {
   my ($cmd, $name, $attr_name, $value) = @_;
+  my $hash = $defs{$name};
+  if ($attr_name eq 'IODev') {
+    if ($cmd eq 'set') {
+      return 'IODev must be a WIFFI_Collector'
+        if !$defs{$value} && $init_done;
+      return 'IODev must be a WIFFI_Collector'
+        if $defs{$value} && ($defs{$value}{TYPE} // '') ne 'WIFFI_Collector';
+      return 'IODev must be a WIFFI_Collector listener'
+        if $defs{$value} && defined $defs{$value}{SNAME};
+    }
+    if ($hash) {
+      my $new_io = $cmd eq 'set' ? $defs{$value} : undef;
+      if (!$hash->{IODev} || !$new_io || $hash->{IODev} != $new_io) {
+        my $pending = delete $hash->{'.WIFFI_HTTP'};
+        HttpUtils_Close($pending) if $pending;
+        delete @{$hash}{qw(PEER MODULTYP)};
+        ++$hash->{'.WIFFI_DEFINITION_GEN'};
+      }
+      if ($cmd eq 'del') {
+        delete $hash->{IODev};
+        delete $hash->{READINGS}{IODev};
+      }
+    }
+    return undef;
+  }
   return undef unless $attr_name eq 'disable' && $cmd eq 'set';
   return 'Usage: attr <device> disable 0|1'
     unless defined $value && $value =~ /\A[01]\z/;
-  if ($value eq '1') {
-    my $hash = $defs{$name};
-    if ($hash) {
-      my $pending = delete $hash->{'.WIFFI_HTTP'};
-      HttpUtils_Close($pending) if $pending;
-    }
+  if ($value eq '1' && $hash) {
+    my $pending = delete $hash->{'.WIFFI_HTTP'};
+    HttpUtils_Close($pending) if $pending;
   }
   return undef;
 }
@@ -37,11 +62,13 @@ sub WIFFI_DEVICE_Attr {
 sub WIFFI_DEVICE_Define {
   my ($hash, $def) = @_;
   my @parts = split /\s+/, $def;
-  my ($name, $type, $collector, $mac) = @parts;
-  return 'Usage: define <name> WIFFI_DEVICE <collector-name> <mac-address>'
-    unless @parts == 4;
-  # A WIFFI_DEVICE may be restored before the collector. Load its shared
-  # parser without creating a listener or requiring a defined collector.
+  my ($name, $type, $first, $second) = @parts;
+  return 'Usage: define <name> WIFFI_DEVICE <mac-address> [legacy: <collector> <mac-address>]'
+    unless @parts == 3 || @parts == 4;
+  # The former syntax (<collector> <MAC>) remains readable for configDB
+  # restoration. Its collector name is only an IODev assignment hint;
+  # no separate COLLECTOR internal is kept.
+  my ($collector, $mac) = @parts == 4 ? ($first, $second) : (undef, $first);
   if (!defined &WIFFI_Collector_NormalizeMac) {
     my $loaded = LoadModule('WIFFI_Collector');
     return 'Cannot load WIFFI_Collector'
@@ -51,18 +78,29 @@ sub WIFFI_DEVICE_Define {
   my $normalized = WIFFI_Collector_NormalizeMac($mac);
   return 'Invalid WIFFI MAC address' unless $normalized;
   return $@ unless FHEM::Meta::SetInternals($hash);
-  # A successful modify invalidates any in-flight frame targeting the
-  # previous definition; plain rename keeps the same definition generation.
+
+  # Resolve explicitly configured IODev first; otherwise the legacy hint.
+  # During startup the collector may not yet exist: core resolves
+  # IODevMissing / IODevName after all definitions are loaded.
+  my $configured = AttrVal($name, 'IODev', undef);
+  my $preferred = $configured || $collector;
+  if ($preferred && !$defs{$preferred}) {
+    return "WIFFI collector $preferred is not defined" if $init_done;
+    $hash->{IODevMissing} = 1;
+    $hash->{IODevName} = $preferred;
+  } else {
+    AssignIoPort($hash, $preferred);
+  }
+  if ($hash->{IODev} && ($hash->{IODev}{TYPE} // '') ne 'WIFFI_Collector') {
+    delete $hash->{IODev};
+    return 'IODev must be a WIFFI_Collector';
+  }
   ++$hash->{'.WIFFI_DEFINITION_GEN'} if exists $hash->{OLDDEF};
-  $hash->{COLLECTOR} = $collector;
   $hash->{MAC} = $normalized;
-  # Explicit `modify` acknowledges that the device's TCP peer can change.
   if (exists $hash->{OLDDEF}) {
-    # A modify invalidates any control request using the previous identity/IP.
     my $pending = delete $hash->{'.WIFFI_HTTP'};
     HttpUtils_Close($pending) if $pending;
-    delete $hash->{PEER};
-    delete $hash->{MODULTYP};
+    delete @{$hash}{qw(PEER MODULTYP)};
   }
   readingsSingleUpdate($hash, 'state', 'waiting', 0);
   return undef;
@@ -150,9 +188,10 @@ sub WIFFI_DEVICE_Set {
     $path = "/?trigger:$cmd:";
   }
 
-  my $collector = $defs{$hash->{COLLECTOR}};
+  my $collector = $hash->{IODev};
   return 'WIFFI collector is not defined'
-    unless $collector && $collector->{TYPE} eq 'WIFFI_Collector';
+    unless $collector && ($collector->{TYPE} // '') eq 'WIFFI_Collector'
+      && $defs{$collector->{NAME}} && $defs{$collector->{NAME}} == $collector;
   return 'WIFFI command already pending' if $hash->{'.WIFFI_HTTP'};
 
   # Only target the observed TCP peer, never an untrusted JSON reading.
