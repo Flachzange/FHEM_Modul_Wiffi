@@ -86,7 +86,7 @@ is($calls[1]{url}, 'http://192.0.2.21/?reset:', 'reset uses documented WIFFI res
 is($device->{READINGS}{Systeminfo_sec_seit_reset}{VAL}, $before_reset_uptime,
   'reset command does not optimistically reset heartbeat uptime');
 $calls[1]{code} = 200;
-$calls[3]{callback}->($calls[3], '', 'ok');
+$calls[1]{callback}->($calls[1], '', 'ok');
 is($device->{READINGS}{Systeminfo_sec_seit_reset}{VAL}, $before_reset_uptime,
   'HTTP 200 is not treated as restart confirmation');
 like(WIFFI_DEVICE_Set($device,'Pump','reset','extra'),qr/Usage/,
@@ -96,7 +96,7 @@ $err = WIFFI_DEVICE_Set($device, 'Pump', 'off');
 is($err, undef, 'off accepted');
 is($calls[2]{url}, 'http://192.0.2.21/?trigger:off:', 'off uses documented command');
 $calls[2]{code} = 404;
-$calls[3]{callback}->($calls[3], '', '');
+$calls[2]{callback}->($calls[2], '', '');
 like(join(' ',@logs), qr/HTTP status 404/, 'HTTP response failure logged');
 ok(!exists $device->{'.WIFFI_HTTP'}, 'failed HTTP response releases busy state');
 
