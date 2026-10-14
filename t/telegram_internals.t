@@ -31,7 +31,7 @@ my $collector = {NAME=>'Collector', TYPE=>'WIFFI_Collector', FRAMES_ERROR=>0,
 $defs{Collector} = $collector;
 my $one = {NAME=>'One',TYPE=>'WIFFI_DEVICE',IODev=>$collector,
   MAC=>'02:00:00:00:00:01'};
-my $two = {NAME=>'Two',TYPE=>'WIFFI_DEVICE',COLLECTOR=>'Collector',
+my $two = {NAME=>'Two',TYPE=>'WIFFI_DEVICE',IODev=>$collector,
   MAC=>'02:00:00:00:00:02'};
 $defs{One} = $one;
 $defs{Two} = $two;
