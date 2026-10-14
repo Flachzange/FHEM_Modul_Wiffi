@@ -32,9 +32,10 @@ sub WIFFI_DEVICE_Attr {
 
 sub WIFFI_DEVICE_Define {
   my ($hash, $def) = @_;
-  my ($name, $type, $collector, $mac) = split /\s+/, $def;
+  my @parts = split /\s+/, $def;
+  my ($name, $type, $collector, $mac) = @parts;
   return 'Usage: define <name> WIFFI_DEVICE <collector-name> <mac-address>'
-    unless defined $collector && defined $mac;
+    unless @parts == 4;
   # A WIFFI_DEVICE may be restored before the collector. Load its shared
   # parser without creating a listener or requiring a defined collector.
   if (!defined &WIFFI_Collector_NormalizeMac) {
@@ -134,7 +135,10 @@ sub WIFFI_DEVICE_Set {
     Log3($hash, 2, "$name: unable to initiate WIFFI $cmd: $error");
     return "Failed to send WIFFI command";
   }
-  return undef; # HTTP is asynchronous; no optimistic pump state update.
+  # FHEM DoSet otherwise emits a synthetic on/off/httpGet event even though
+  # no WIFFI telemetry confirmed a physical state change.
+  # Suppress that event in DoSet's list context; retain scalar error contract.
+  return wantarray ? (undef, 1) : undef;
 }
 
 sub WIFFI_DEVICE_HttpDone {
