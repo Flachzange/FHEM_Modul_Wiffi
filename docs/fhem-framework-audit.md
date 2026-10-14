@@ -32,7 +32,7 @@ Severity refers to the **practical impact in this WIFFI module**, not an asserti
 - **Events and state:** reading updates are the source of sensor truth. Successful asynchronous HTTP command dispatch must not imply physical state, including through FHEM's default synthetic `set` event. User-editable event/DbLog attributes and opt-in prefix handling remain unchanged.
 - **Resource, input and security:** bounded frame/client lifetime and size, `allowfrom` FHEM source filter, MAC/IP identity conflicts, nonblocking HTTP, relative paths and no redirects. No speculative IP-age cutoff (closed #6) or diagnostic rate-limit/counter layer (closed #7).
 - **Documentation and release:** Public usage examples use synthetic MAC addresses. FHEM-integrated bilingual help and separate release checklist exist. No SVN-only metadata requirements are imposed unless upstream inclusion is actually proposed. No version bump or release publication as part of this audit.
-- **Remaining scope:** existing open #4 (actual socket lifecycle verification), #9 (live disable checks), #11 (colon-free MAC definitions) and separate protocol/transport issues continue independently; do not duplicate them in #10. Existing code fixes are not proof that all relevant staging tests were performed.
+- **Remaining scope:** existing open #4 (actual socket lifecycle verification), #9 (live disable checks) and separate protocol/transport issues continue independently; do not duplicate them in #10. Colon-free MAC definitions (#11) are handled by the shared normalizer and covered by focused regression tests. Existing code fixes are not proof that all relevant staging tests were performed.
 
 ## Test evidence and gaps
 
