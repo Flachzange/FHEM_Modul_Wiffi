@@ -11,7 +11,23 @@ sub WIFFI_DEVICE_Initialize {
   $hash->{DefFn} = 'WIFFI_DEVICE_Define';
   $hash->{UndefFn} = 'WIFFI_DEVICE_Undef';
   $hash->{SetFn} = 'WIFFI_DEVICE_Set';
-  $hash->{AttrList} = 'stripReadingPrefix:0,1 '.$readingFnAttributes;
+  $hash->{AttrFn} = 'WIFFI_DEVICE_Attr';
+  $hash->{AttrList} = 'stripReadingPrefix:0,1 disable:0,1 '.$readingFnAttributes;
+}
+
+sub WIFFI_DEVICE_Attr {
+  my ($cmd, $name, $attr_name, $value) = @_;
+  return undef unless $attr_name eq 'disable' && $cmd eq 'set';
+  return 'Usage: attr <device> disable 0|1'
+    unless defined $value && $value =~ /\A[01]\z/;
+  if ($value eq '1') {
+    my $hash = $defs{$name};
+    if ($hash) {
+      my $pending = delete $hash->{'.WIFFI_HTTP'};
+      HttpUtils_Close($pending) if $pending;
+    }
+  }
+  return undef;
 }
 
 sub WIFFI_DEVICE_Define {
@@ -63,6 +79,7 @@ sub WIFFI_DEVICE_Set {
   return "Unknown argument ".($cmd // '').", choose one of $choices"
     unless defined $cmd && ($cmd eq 'httpGet'
       || ($pump && $cmd =~ /\A(?:on|off|on-for-timer)\z/));
+  return 'WIFFI device is disabled' if AttrVal($name, 'disable', 0) eq '1';
 
   my $path;
   if ($cmd eq 'httpGet') {
