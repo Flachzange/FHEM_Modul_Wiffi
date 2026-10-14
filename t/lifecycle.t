@@ -232,7 +232,7 @@ ok(exists $selectlist{'Collector.9395'}, 'recovered new port is bound');
 # Correct the listener selectlist key, temporary SNAME and the device DEF.
 my $logical = {
   NAME => 'WIFFI_PUMP2', TYPE => 'WIFFI_DEVICE',
-  COLLECTOR => 'Collector',
+  IODev => $h,
   MAC => '02:00:00:00:00:01',
   DEF => 'Collector 02:00:00:00:00:01',
   READINGS => {wiffi_pump=>{VAL=>'true'}}
@@ -249,8 +249,8 @@ ok(exists $selectlist{'CollectorRenamed.9395'},
    'rename migrates listener selectlist entry');
 is($open_client->{SNAME}, 'CollectorRenamed',
    'rename updates parent reference for temporary client');
-is($logical->{COLLECTOR}, 'CollectorRenamed',
-   'logical device references new collector');
+is($logical->{IODev}, $h,
+   'logical device retains original IODev hash reference after rename');
 is($logical->{DEF}, 'CollectorRenamed 02:00:00:00:00:01',
    'logical definition persists renamed collector dependency');
 is($logical->{READINGS}{wiffi_pump}{VAL}, 'true',
