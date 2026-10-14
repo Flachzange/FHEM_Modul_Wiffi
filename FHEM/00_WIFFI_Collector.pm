@@ -6,6 +6,7 @@ use warnings;
 use Errno qw(EAGAIN EWOULDBLOCK);
 use TcpServerUtils;
 use JSON::PP ();
+use Time::HiRes ();
 use vars qw(%defs $init_done $readingFnAttributes);
 
 # Parser helpers live here so an installed FHEM module needs no additional .pm file.
