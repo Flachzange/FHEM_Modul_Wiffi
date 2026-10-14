@@ -28,6 +28,8 @@ for my $file (@files) {
     "$file Initialize loads embedded metadata");
   like($code, qr/return \$@ unless FHEM::Meta::SetInternals\(\$hash\);/,
     "$file Define requests FVERSION through FHEM::Meta");
+  like($code, qr/\$hash->\{FVERSION\} \/\/= '\Q$basename\E:' \./,
+    "$file has missing-x_version fallback for native FVERSION Internal");
   ok(!($code =~ /readings\w*Update\(\$hash,\s*['"](?:FVERSION|VERSION)['"]/),
     "$file does not create a module-version reading");
 }
