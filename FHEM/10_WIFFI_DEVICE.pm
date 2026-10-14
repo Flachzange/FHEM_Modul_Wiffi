@@ -248,7 +248,8 @@ sub WIFFI_DEVICE_Process {
   TCP sender, on port 80, with a five-second timeout, no redirects
   and at most one concurrent request per logical device. A successful
   HTTP reply does not update pump feedback or other readings;
-  only later received telemetry does.
+  only later received telemetry does. Successful asynchronous HTTP
+  commands do not generate a synthetic FHEM set-command event.
   The pump shortcuts are available according to the latest valid
   <code>modultyp</code>. A changed type can add or remove these shortcuts.
 </p>
@@ -340,6 +341,8 @@ sub WIFFI_DEVICE_Process {
   parallele Anfragen an dasselbe logische Ger&auml;t sind gesperrt.
   Eine erfolgreiche HTTP-Antwort &auml;ndert keine Pumpen- oder
   Messwert-Readings. Daf&uuml;r ist neue TCP-Telemetrie erforderlich.
+  Erfolgreich gestartete HTTP-Befehle erzeugen auch kein zus&auml;tzliches
+  k&uuml;nstliches FHEM-Set-Event.
   Die angebotenen Pumpenbefehle richten sich nach dem zuletzt
   g&uuml;ltigen <code>modultyp</code> und passen sich bei
   einem Typwechsel an.
