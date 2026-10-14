@@ -411,6 +411,44 @@ ok(grep(/vars\[1\].*unsupported value type/, @logs),
 ok(!grep(/999.*999/, @logs), 'error log does not contain full raw telegram');
 
 
+
+# A maintainer can opt in to diagnostics containing the actual rejected frame.
+# Default stays concise. Every repeated rejection still produces a new log.
+$attr{Collector}{logRejectedPayload} = 1;
+my $logs_before = scalar @logs;
+$errors_before = $server->{FRAMES_ERROR};
+WIFFI_Collector_ProcessFrame($server, $atomic_bad, '192.0.2.28');
+is($server->{FRAMES_ERROR}, $errors_before + 1,
+  'rejection counter increments with payload logging enabled');
+is(scalar(@logs), $logs_before + 1, 'one log per rejected parser telegram');
+like($logs[-1], qr/\Q$atomic_bad\E/,
+  'opted-in log contains complete rejected JSON telegram');
+like($logs[-1], qr/vars\[1\]: unsupported value type/,
+  'payload log also retains the validation reason');
+$logs_before = scalar @logs;
+WIFFI_Collector_ProcessFrame($server, $atomic_bad, '192.0.2.28');
+is(scalar(@logs), $logs_before + 1,
+  'identical recurring error is logged again, not rate-limited');
+
+# Log structure remains a single line even if the invalid raw JSON contains
+# actual newlines and control characters; raw data must not forge FHEM entries.
+my $newline_bad = "{\"modultyp\":\n\x01}";
+$logs_before = scalar @logs;
+WIFFI_Collector_ProcessFrame($server, $newline_bad, '192.0.2.28');
+is(scalar(@logs), $logs_before + 1, 'invalid JSON produces one log entry');
+unlike($logs[-1], qr/[\r\n\x01]/,
+  'logged invalid JSON cannot inject newlines or control bytes');
+like($logs[-1], qr/\\x0A.*\\x01/,
+  'line breaks and control bytes are escaped in the payload');
+
+# Deliberately enormous bad frames are bounded even with logging enabled.
+my $large_bad = '{"modultyp":"PULSECOUNTER","vars":[],"extra":"'
+   .('X' x 17000).'","Systeminfo":{}}';
+WIFFI_Collector_ProcessFrame($server, $large_bad, '192.0.2.28');
+like($logs[-1], qr/truncated\): /, 'excessive raw payload is marked truncated');
+ok(length($logs[-1]) < 17000,
+  'large invalid payload cannot amplify a log record without limit');
+
 # JSON null is a valid "no new value" marker. Publish all other readings;
 # neither clear nor refresh old values for the null entries.
 my $null_frame = '{"modultyp":"PULSECOUNTER","vars":['
@@ -471,5 +509,23 @@ ok(!exists $defs{WIFFI_020000000009}{READINGS}{w_counter1},
   'autocreated null value does not fabricate a reading');
 is($defs{WIFFI_020000000009}{READINGS}{w_power1}{VAL}, '0',
   'other measurements survive valid null');
+
+
+# Not just decoding errors: identity and mapping failures include the frame.
+$server = start_case();
+$attr{Collector}{logRejectedPayload} = 1;
+my $identity_packet = telegram('02:00:00:00:00:01', '192.0.2.21', '5');
+my $identity_second = { NAME => 'Duplicate', TYPE => 'WIFFI_DEVICE',
+  COLLECTOR => 'Collector', MAC => '02:00:00:00:00:01' };
+my $identity_first = { NAME => 'Original', TYPE => 'WIFFI_DEVICE',
+  COLLECTOR => 'Collector', MAC => '02:00:00:00:00:01' };
+$defs{Duplicate} = $identity_second;
+$defs{Original} = $identity_first;
+WIFFI_Collector_ProcessFrame($server, $identity_packet, '192.0.2.21');
+is($server->{FRAMES_ERROR}, 1, 'duplicate identities counted as error');
+like($logs[-1], qr/WIFFI identity conflict/,
+  'identity problem included in reason');
+like($logs[-1], qr/\Q$identity_packet\E/,
+  'identity rejection includes opted-in JSON');
 
 done_testing();
