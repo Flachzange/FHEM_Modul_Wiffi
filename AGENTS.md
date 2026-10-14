@@ -69,6 +69,17 @@ This repository develops an event-driven FHEM integration for the classic STALL 
 - For newly autocreated WIFFI devices, apply `event-on-change-reading .*`, `event-on-update-reading Systeminfo_sec_seit_reset`, and `DbLogExclude ^Systeminfo_sec_seit_reset$` as user-editable defaults. This suppresses unchanged-value events while retaining a heartbeat event without filling DbLog with uptime counters. Do not change these attributes on existing devices or overwrite values set by `DEFINED` hooks. Pump-specific `stateFormat`/`devStateIcon` defaults still apply only to `wiffi-pump`. Avoid per-sensor custom timers. Explicitly document consequences for logging and periodic graph samples.
 - New dependencies require justification, documentation, and CI coverage. Do not introduce a generic framework or many single-purpose helpers where one clear path suffices.
 
+## Issue triage: practical value before added complexity
+
+Before opening an issue **or recommending a defensive change**, inspect the current code, relevant real-world usage and existing issues. Decide whether any work is justified **before** inventing a fix:
+
+- **Evidence and impact:** State whether the behavior is reproduced, directly supported by code/framework contracts, or merely hypothetical. Describe a concrete consequence in the actual WIFFI/FHEM deployment, its likelihood, and who is affected. Do not turn every conceivable failure path into a ticket.
+- **Existing behavior and alternatives:** Check whether the system already handles the case acceptably, whether the proposed restriction could break a useful workflow, and whether doing nothing or documenting a limitation is better. Do not assume more guarding automatically means more safety.
+- **Cost versus benefit:** Estimate additional state, callbacks, timers, configuration, tests, maintenance and operator burden against expected value. Prefer the smallest intervention with a meaningful outcome; decline defensive machinery whose complexity exceeds the realistic risk.
+- **Exceptions:** Address actual defects and credible security, safety, data-loss or resource-exhaustion risks even when uncommon. State the risk and evidence proportionately; absence of an observed incident alone is not grounds to dismiss a high-impact vulnerability.
+- **Decision and duplication:** Search existing tickets first. File a focused issue only for a justified, actionable change; otherwise leave a brief finding in the current review or mark an existing ticket `not planned` with rationale. Do not create meta-issues or mandatory scoring templates for this check.
+- **Maintainer decision:** Where the correct behavior is a product/operational tradeoff, discuss the concrete benefit, downside and simplest alternative before proceeding. Do not interpret a speculative audit finding as approval to implement it.
+
 ## Development simplicity and scope
 
 - **Do not optimize for every hypothetical edge case.** Build for verified requirements, realistic failure scenarios, and meaningful correctness/security risks. Do not introduce speculative fallbacks, guards, state variables, retries, compatibility paths, or helper layers merely because a case is imaginable; each added complexity must have a concrete justification.
