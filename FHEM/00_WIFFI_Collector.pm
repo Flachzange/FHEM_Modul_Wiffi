@@ -715,6 +715,11 @@ sub WIFFI_Collector_ProcessFrame {
 <a id="WIFFI_Collector-internals"></a>
 <h4>Diagnostics (INTERNALS)</h4>
 <ul>
+  <li><code>FVERSION</code>: version of the installed FHEM module
+      (different from the WIFFI firmware version).</li>
+  <li><code>LAST_TELEGRAM</code>: local receive time of the most recent
+      valid decoded/identity-accepted WIFFI telegram, even from an
+      unassigned or disabled logical device. No Reading or event.</li>
   <li><code>FRAMES_OK</code>, <code>FRAMES_ERROR</code>,
       <code>FRAMES_UNKNOWN</code>, <code>AUTOCREATED</code>:
       accepted, rejected, unassigned and automatically assigned frames
@@ -792,6 +797,12 @@ sub WIFFI_Collector_ProcessFrame {
 <a id="WIFFI_Collector-internals"></a>
 <h4>Diagnose (INTERNALS)</h4>
 <ul>
+  <li><code>FVERSION</code>: Version des installierten FHEM-Moduls
+      (nicht die WIFFI-Firmwareversion).</li>
+  <li><code>LAST_TELEGRAM</code>: lokale Empfangszeit des letzten
+      g&uuml;ltigen, dekodierten und identit&auml;tsgepr&uuml;ften WIFFI-Telegramms,
+      auch eines unbekannten oder deaktivierten logischen Ger&auml;ts.
+      Kein Reading und kein Event.</li>
   <li><code>FRAMES_OK</code>, <code>FRAMES_ERROR</code>,
       <code>FRAMES_UNKNOWN</code>, <code>AUTOCREATED</code>:
       angenommene, abgewiesene und nicht zugeordnete Telegramme
