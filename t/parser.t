@@ -42,7 +42,8 @@ eval { WIFFI_Collector_Decode($duplicate) };
 like($@, qr/duplicate CCU name/, 'duplicate names rejected');
 
 
-# Absent optional measurements are valid; malformed *present* entries are not.
+# Absent or JSON-null optional measurements do not publish new readings.
+# Present non-null values and the overall structure must still be valid.
 my $weather = '{"modultyp":"weatherman","vars":['
   .'{"homematic_name":"w_temperatur","value":"12.3","type":"number"}'
   .'],"Systeminfo":{"MAC-Adresse":"e8:db:84:98:c6:d3","sec_seit_reset":77}}';
@@ -58,6 +59,28 @@ is($weather_zero_packet->{readings}{Systeminfo_sec_seit_reset}, '78',
    'valid zero brightness still updates heartbeat');
 ok(!exists $weather_zero_packet->{readings}{'Systeminfo_MAC-Adresse'},
    'hyphenated MAC identity is not published as a reading');
+
+# A null sample is a valid "no new value"; zero and empty strings remain data.
+my $weather_null = '{"modultyp":"weatherman","vars":['
+  .'{"homematic_name":"w_lux","value":null,"type":"number"},'
+  .'{"homematic_name":"w_temperatur","value":"0"},'
+  .'{"homematic_name":"w_text","value":""},'
+  .'{"homematic_name":"w_optional","name":null,"type":null,"value":1}'
+  .'],"Systeminfo":{"MAC-Adresse":"e8:db:84:98:c6:d3",'
+  .'"sec_seit_reset":null,"firmware":"test"}}';
+my $weather_null_packet = WIFFI_Collector_Decode($weather_null);
+ok(!exists $weather_null_packet->{readings}{w_lux},
+  'null brightness generates no reading');
+ok(!exists $weather_null_packet->{readings}{Systeminfo_sec_seit_reset},
+  'null optional heartbeat generates no reading');
+is($weather_null_packet->{readings}{w_temperatur}, '0',
+  'string zero remains data alongside null');
+is($weather_null_packet->{readings}{w_text}, '',
+  'empty string remains data alongside null');
+is($weather_null_packet->{readings}{w_optional}, '1',
+  'null optional metadata does not reject non-null value');
+is($weather_null_packet->{readings}{Systeminfo_firmware}, 'test',
+  'other Systeminfo values survive null entries');
 
 my $weather_packet = WIFFI_Collector_Decode($weather);
 is($weather_packet->{readings}{w_temperatur}, '12.3',
@@ -86,9 +109,9 @@ my @bad_entries = (
   ['object name', '[{"homematic_name":{},"value":1}]', qr/invalid homematic_name/],
   ['invalid name', '[{"homematic_name":"bad name","value":1}]',
      qr/invalid homematic_name/],
-  ['missing value', '[{"homematic_name":"w_test"}]', qr/missing or null value/],
-  ['null value', '[{"homematic_name":"w_test","value":null}]',
-     qr/missing or null value/],
+  ['missing value', '[{"homematic_name":"w_test"}]', qr/missing value/],
+  ['duplicate after null', '[{"homematic_name":"w_test","value":null},'
+    .'{"homematic_name":"w_test","value":1}]', qr/duplicate CCU name/],
   ['array value', '[{"homematic_name":"w_test","value":[1]}]',
      qr/unsupported value type/],
   ['object value', '[{"homematic_name":"w_test","value":{}}]',
@@ -103,6 +126,8 @@ my @bad_entries = (
      qr/reserved state/],
   ['Systeminfo collision', '[{"homematic_name":"Systeminfo_sec_seit_reset","value":1}]',
      qr/reading name collision/],
+  ['Systeminfo collision despite null', '[{"homematic_name":"Systeminfo_sec_seit_reset","value":null}]',
+     qr/reading name collision/],
 );
 for my $case (@bad_entries) {
   my ($label, $vars, $expected) = @$case;
@@ -116,9 +141,8 @@ my @bad_system = (
      qr/invalid MAC-Adresse/],
   ['invalid MAC type', '{"modultyp":"weatherman","vars":[],"Systeminfo":{"MAC-Adresse":[]}}',
      qr/invalid MAC-Adresse/],
-  ['null Systeminfo value', '{"modultyp":"weatherman","vars":[],"Systeminfo":{'
-     .'"MAC-Adresse":"e8:db:84:98:c6:d3","sec_seit_reset":null}}',
-     qr/Systeminfo: missing or null value/],
+  ['null MAC', '{"modultyp":"weatherman","vars":[],"Systeminfo":{"MAC-Adresse":null}}',
+     qr/invalid MAC-Adresse/],
   ['object Systeminfo value', '{"modultyp":"weatherman","vars":[],"Systeminfo":{'
      .'"MAC-Adresse":"e8:db:84:98:c6:d3","other":{}}}',
      qr/Systeminfo: unsupported value type/],
