@@ -295,6 +295,9 @@ like(WIFFI_DEVICE_Set($typed, $type_name, '?'),
 like(WIFFI_DEVICE_Set($typed, $type_name, 'on'),
   qr/Unknown argument.*httpGet/,
   'old pump on command is refused after type change');
+like(WIFFI_DEVICE_Set($typed, $type_name, 'off'),
+  qr/Unknown argument.*httpGet/,
+  'old pump off command is refused after type change');
 like(WIFFI_DEVICE_Set($typed, $type_name, 'on-for-timer', 30),
   qr/Unknown argument.*httpGet/,
   'old timer command is refused after type change');
@@ -320,6 +323,30 @@ is($server->{FRAMES_OK}, 5, 'all type transitions accepted');
 is($server->{FRAMES_ERROR}, 0, 'no parser errors from type transitions');
 is(scalar(grep {/WIFFI modultyp changed:/} @logs), 2,
   'pump-to-counter and counter-to-pump each logged once');
+
+# A broken telegram claiming a new type must not alter the existing type,
+# advertised setters, state or heartbeat.
+my $before_heartbeat = $typed->{READINGS}{Systeminfo_sec_seit_reset}{VAL};
+my $invalid_type_packet = JSON::PP::encode_json({
+  modultyp => 'PULSECOUNTER',
+  vars => [
+    {homematic_name => 'w_counter1', value => '100'},
+    {homematic_name => 'w_counter1', value => '101'}
+  ],
+  Systeminfo => {'MAC-Adresse' => $type_mac, sec_seit_reset => '999'}
+});
+WIFFI_Collector_ProcessFrame($server, $invalid_type_packet, '192.0.2.29');
+is($typed->{MODULTYP}, 'wiffi-pump',
+  'invalid changed-type telegram does not alter current type');
+is($typed->{READINGS}{Systeminfo_sec_seit_reset}{VAL}, $before_heartbeat,
+  'invalid changed-type telegram does not refresh heartbeat');
+like(WIFFI_DEVICE_Set($typed, $type_name, '?'),
+  qr/choose one of on off on-for-timer httpGet\z/,
+  'invalid changed-type telegram cannot remove pump commands');
+is($server->{FRAMES_ERROR}, 1, 'real invalid packet counted as malformed');
+is(scalar(grep {/WIFFI modultyp changed:/} @logs), 2,
+  'invalid changed-type packet is not logged as an accepted transition');
+
 $typed->{OLDDEF} = $typed->{DEF};
 is(WIFFI_DEVICE_Define($typed,
     "$type_name WIFFI_DEVICE Collector $type_mac"), undef,
