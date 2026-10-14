@@ -44,6 +44,7 @@ All rows are **not yet verified on real FHEM**.
 | L14 | Module `reload` | No unexpected duplicate listeners or stale callbacks; document whether explicit `set reopen` is required for current FHEM | Not run |
 | L15 | EOF/read error/60-s idle/180-s absolute lifetime | Temporary clients removed and `CLIENTS_ACTIVE` reduced; listener remains healthy, other devices continue receiving | Not run |
 | L16 | Known device remains after a failed listener bind | Last sensor readings and attributes unchanged; recovery doesn't duplicate autocreated devices | Not run |
+| L17 | Reentrant DOIF/notify triggers `set reopen`, `modify`, `delete` or `rename` during a batched TCP read | Old connection discards queued frames on close/modify/delete; stable hash identity allows rename; no stale reading publication or unexpected frame errors | Not run |
 
 ### Suggested staging checks
 
@@ -60,6 +61,8 @@ set WIFFI_Collector reopen
 From the FHEM host's shell, optionally verify the actual TCP listener using `ss -ltnp` with the test port. Record `LISTENER_STATUS`, `LISTENER_ERROR`, `CLIENTS_ACTIVE`, `CONNECTS`, socket/listener counts, and relevant FHEM log lines before/after each operation. If a temporary client persists, note its `NAME`, `SNAME` and `FD` without publishing real identifiers in repository test fixtures.
 
 ### Automated test coverage
+
+`t/reentrancy.t` additionally injects synchronous Reading and DEFINED/ATTR callback actions (listener reopen/modify/delete, client and logical device delete/modify, plus identity-preserving renames). The tests use real WIFFI modules and FHEM contract doubles; actual DOIF/notify behavior, socket lifecycle, and configDB still need validation. 
 
 `t/lifecycle.t` checks callback registration, bind failure and recovery, repeated failure logging, manual reopen, active-child cleanup, correct selectlist key on `modify` and `rename`, deferred startup rename, and undef/redefine behavior. `t/transport.t` checks connection limits and timeouts. Both use isolated FHEM mocks; they do **not** verify the full core event loop, configDB persistence, actual socket handles or select-list lifetime on the target system.
 
