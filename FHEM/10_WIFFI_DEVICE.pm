@@ -326,10 +326,11 @@ sub WIFFI_DEVICE_Process {
 </p>
 <a id="WIFFI_DEVICE-attr"></a>
 <p>
-  When FHEMWEB knows a valid TCP peer for the device, the device detail view
-  and room overview include a <b>WIFFI Webinterface</b> link to
-  <code>http://&lt;peer&gt;/</code>. The link uses only the validated source
-  address learned from accepted TCP telemetry and opens in a new browser tab.
+  When FHEMWEB knows a valid TCP peer for the device, its detail page
+  includes a <b>WIFFI Webinterface</b> link to
+  <code>http://&lt;peer&gt;/</code>, with a blank line before the Set controls.
+  The room overview has no extra link row. The link uses only the validated
+  source address learned from accepted TCP telemetry and opens in a new tab.
 </p>
 <h4>Attributes</h4>
 <ul>
@@ -456,11 +457,13 @@ sub WIFFI_DEVICE_Process {
 </p>
 <a id="WIFFI_DEVICE-attr"></a>
 <p>
-  Sobald FHEMWEB einen g&uuml;ltigen TCP-Peer des Ger&auml;ts kennt, wird in
-  der Ger&auml;tedetailansicht und Raum&uuml;bersicht ein Link
-  <b>WIFFI Webinterface</b> auf <code>http://&lt;peer&gt;/</code> angezeigt.
-  Verwendet wird ausschlie&szlig;lich die validierte Quelladresse aus
-  akzeptierter TCP-Telemetrie; der Link &ouml;ffnet in einem neuen Tab.
+  Sobald FHEMWEB einen g&uuml;ltigen TCP-Peer des Ger&auml;ts kennt, wird
+  in der Ger&auml;tedetailansicht der Link <b>WIFFI Webinterface</b> auf
+  <code>http://&lt;peer&gt;/</code> angezeigt, mit einer Leerzeile vor den
+  Set-Befehlen. Die Raum&uuml;bersicht erh&auml;lt keine zus&auml;tzliche
+  Link-Zeile. Verwendet wird ausschlie&szlig;lich die validierte
+  Quelladresse aus akzeptierter TCP-Telemetrie; der Link &ouml;ffnet in
+  einem neuen Tab.
 </p>
 <h4>Attribute</h4>
 <ul>
