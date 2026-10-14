@@ -1,0 +1,79 @@
+# AGENTS-WIFFI.md — WIFFI Collector project rules
+
+**Mandatory companion to [`AGENTS.md`](AGENTS.md).** For every change involving this WIFFI repository (including code, tests, documents, issues, PRs and review), read and apply **both** files. This document defines WIFFI-specific behavior and evidence; generic FHEM development rules remain in `AGENTS.md`.
+## Project identity and sources
+
+- The authoritative editable sources are the **current files in this repository**, on the branch being changed:
+  - `FHEM/00_WIFFI_Collector.pm` — FHEM TCP server, device dispatch, shared MAC/JSON/frame parser.
+  - `FHEM/10_WIFFI_DEVICE.pm` — per-device FHEM endpoint.
+  - `t/`, `.github/workflows/`, `README.md` — tests and documented behavior.
+- Module types: `WIFFI_Collector` and `WIFFI_DEVICE`. Keep FHEM callback/global function prefixes `WIFFI_Collector_` and `WIFFI_DEVICE_`; shared parser functions use the `WIFFI_Collector_` prefix in the collector module. Ensure they are available even when `WIFFI_DEVICE` is defined before the collector.
+- License: **GPL-2.0-or-later**. The `LICENSE` file contains the unmodified GPLv2 text; project SPDX notices and the README explicitly grant GPLv2 *or (at the user's option) any later version*. Keep those statements consistent and do not change license terms without maintainer approval.
+- Maintainer: Flachzange. Status: **experimental, not production-validated**.
+- The module shall not depend on Node-RED, MQTT, polling, `notify`, or `dummy` devices for normal ingestion. WIFFI HTTP control uses FHEM `HttpUtils_NonblockingGet` without introducing blocking commands or timers.
+- Generated releases belong under `dist/` and are not hand-edited or committed. Do not introduce a release layout until it is actually needed and tested.
+
+## WIFFI wire protocol and identity contract
+
+- A classic telegram is expected to contain `modultyp`, a `vars` array, and `Systeminfo`. Support documented format variations deliberately; never assume JSON array order is stable.
+- **By default, public sensor reading names match `vars[].homematic_name` exactly**, not `desc`, MQTT aliases, or array indexes. The **only intentional opt-in exception** is the per-device `stripReadingPrefix 1` attribute, which removes a single leading `w_` from those names. Never rename them implicitly. Validate the effective names and reject/report collisions (including collisions introduced by prefix removal) without overwriting values.
+- `vars[].name` is a protocol variable identifier, not the default public reading name. Preserve it as useful internal context when needed for identity/validation.
+- Keep each device's readings on its own logical `WIFFI_DEVICE`; identical `homematic_name` values on *different devices* are valid.
+- Keep `Systeminfo` readings in a separately documented namespace such as `Systeminfo_firmware` and `Systeminfo_sec_seit_reset`, without collisions with sensor readings.
+- Normalize valid MAC spellings (for example `b4:e6:2d:17:db:7` and `B4:E6:2D:17:DB:07`) for lookup while retaining enough raw context for diagnosis.
+- MAC identification is not absolute proof of uniqueness. The two PULSECOUNTER2-LAN units originally advertised the same MAC until parameter 6 was changed. Detect conflicting simultaneous MAC/IP identities; never silently merge different physical devices. A change of sender IP requires an explicit, justified policy.
+- Compare TCP peer identity with payload identity where available, but account for routed/NATed setups and do not blindly trust a self-reported IP address.
+- Preserve device values without undocumented rounding, unit conversion, clamping, or zero substitution. This is especially important for large PULSECOUNTER counters, precision, `type:number` values encoded as strings, and `type:boolean` values encoded as `"false"`/`"true"`.
+- Reject or explicitly surface malformed entries, missing required structure, duplicate names, unsupported container types and incompatible schema changes without publishing partial telegrams. JSON `null` for a present sensor value or optional Systeminfo field means **no new value**: retain the existing reading/timestamp and process other valid entries; an absent optional measurement is not an error. Do not invent mandatory sensor fields without protocol evidence.
+- Only add device-specific rules when required by independently verified device behavior; keep the core parser generic.
+- Treat the `MODULTYP` INTERNAL as the **latest successfully accepted telegram type**, not a persistent device identity. A valid type change is **allowed**, logged on FHEM level 3, and must immediately update which type-specific `SetFn` commands are offered. Do not reject a frame, add persistence or count a frame error solely for changing `modultyp`. The first valid telegram after startup or explicit `modify` establishes the type afresh; never silently change existing `stateFormat`/`devStateIcon` user attributes during a type change.
+
+## WIFFI TCP and framing contract
+
+- For classic WIFFI telegrams, use the framing, buffering and resource limits documented below together with the shared transport principles in `AGENTS.md`.
+- Buffer **per accepted connection**, not globally. Implement and test boundaries using observed ETX/EOT (`0x03`/`0x04`) and actual device close-on-send behavior. EOF processing is not automatically equivalent to a validated frame.
+- Check listener/client socket lifetime, `allowfrom`, partial writes/reads where applicable, close/error behavior, undefined/deleted clients, and port changes.
+- For every accepted connection, ensure cleanup of its FHEM temporary device and buffer on EOF, error, undefine, disable, restart, and reload as applicable; do not leave duplicate listeners or abandoned selectlist entries.
+- Do not claim that an offline detector exists if no such detector is implemented. A heartbeat reading's timestamp can support an external event-driven watchdog, but **unchanged data still need to refresh heartbeat age**.
+- Distinguish transport-level receipt, JSON validity, successful identity assignment, and successful publication to the logical device when counting and reporting diagnostics.
+
+## FHEM presentation, dispatch and accepted control behavior
+
+- For newly autocreated WIFFI devices, apply `event-on-change-reading .*`, `event-on-update-reading Systeminfo_sec_seit_reset`, and `DbLogExclude ^Systeminfo_sec_seit_reset$` as user-editable defaults. This suppresses unchanged-value events while retaining a heartbeat event without filling DbLog with uptime counters. Do not change these attributes on existing devices or overwrite values set by `DEFINED` hooks. Pump-specific `stateFormat`/`devStateIcon` defaults still apply only to `wiffi-pump`. Avoid per-sensor custom timers. Explicitly document consequences for logging and periodic graph samples.
+- `WIFFI_Collector` owns the shared TCP listener and protocol parser. `WIFFI_DEVICE` represents one logical sender by collector + normalized MAC; its sensor Readings come from the validated telegram.
+- `WIFFI_DEVICE_Set` derives the type-specific commands from the latest valid `MODULTYP` INTERNAL; a type change is accepted and logged, never treated as an invalid frame solely because of the type change.
+- Do not silently alter previously configured `stateFormat`, `devStateIcon`, event/DbLog attributes or user-owned device configuration during a device-type change.
+- **Issue #6 decision (2026-10-14):** Do not add age-based HTTP-command blocking merely because the last accepted WIFFI TCP telegram is old. In this deployment the extra state and false blocks outweigh the theoretical stale-IP benefit. Keep the existing TCP-peer validation, fixed host and HTTP safety constraints; reconsider only with concrete operational evidence.
+
+## WIFFI identity and autocreate security
+
+- `autocreate` is off by default; generate deterministic names from the **full normalized MAC**, never from untrusted `modultyp`; preserve manually renamed devices and refuse duplicate logical MAC/peer identity assignments. Never allow untrusted fields to inject FHEM commands, impersonate an existing device, or overwrite its configuration.
+
+## WIFFI test suite and evidence limits
+
+- The current CI suite is `prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t t/transport.t t/lifecycle.t t/reentrancy.t`; GitHub Actions also performs isolated Perl syntax checks. These checks do **not** establish that real FHEM listener, callbacks, or lifecycle behavior works. Keep this list synchronized with `.github/workflows/perl-tests.yml`.
+- Test: split and concatenated TCP telegrams; ETX/EOT and EOF; payloads without terminators; oversized and malformed frames; UTF-8, invalid JSON, missing/duplicate names; different firmware-type values; reconnect, duplicate MACs/IP conflicts; unknown and renamed devices; autocreate collision/injection.
+- Test: large/invalid numeric counters and value precision, string booleans, unchanged values/heartbeat timestamp refresh, event-on-change/update interactions, DbLog effects, and reentrant callbacks.
+- Confirm behavior on a **real test FHEM** and ideally a real WIFFI device before any production recommendation. State exactly what live tests were **not** done.
+- The test command should become a documented `scripts/ci.sh` entry point when this project gains a complete test suite; do not claim that it already exists.
+- CI test doubles and syntax checks are not equivalent to live FHEM integration. Document dedicated real-system evidence and remaining lifecycle scenarios in `docs/fhem-lifecycle-test-matrix.md`; keep issue #4 and related staging verifications explicit.
+- Record source-backed findings from issue #10 in the **generic** `AGENTS.md` when broadly applicable to FHEM modules; keep WIFFI-only conclusions here. The issue's required knowledge transfer applies across both files.
+
+## WIFFI user-facing behavior and migration
+
+These requirements are **WIFFI-specific**, not inherited from the other modules:
+
+- One shared TCP listener, logically separate devices keyed by validated/normalized device identity.
+- Initial protocol targets: WIFFI-pump 2, WEATHERMAN, two PULSECOUNTER2-LAN devices.
+- Expose verified WIFFI-pump 2 convenience setters for `trigger:on:`, `trigger:off:`, and `trigger:<seconds>:`; `on` means indefinitely on. All WIFFI types may expose the deliberately explicit expert `httpGet` command accepting a single validated relative path/query. This command can alter device configuration, so never present it as read-only. Use only the observed validated IPv4 TCP peer as the HTTP host and default port 80, never user-provided scheme/host/port. Disable redirects via FHEM HttpUtils `ignoreredirects => 1` (verified in mhop/fhem-mirror `fhem/FHEM/HttpUtils.pm`); bound length/timeout, reject whitespace, control characters, backslashes, fragments and malformed percent encoding; never synthesize state from HTTP replies. Cancel pending requests on undefine/modify and test concurrent sends, unknown types, redirects and hostile paths. Never expose unrestricted arbitrary absolute URLs or POST.
+- Only `homematic_name` determines the default sensor reading names; explicit `stripReadingPrefix 1` may remove a single leading `w_` per logical device. Do not preserve earlier Node-RED/MQTT alias names as implicit compatibility output.
+- Sender heartbeat `Systeminfo_sec_seit_reset` should remain usable for external watchdogs; no implicit polling.
+- Existing Node-RED-to-MQTT devices must remain untouched during development and one-by-one migration.
+- Migrating existing FHEM devices requires separately reviewing dependent DOIF, userReadings, averages, `statistics`, DbLog readers, and historical timeseries. Do not silently change production data or automations.
+
+## WIFFI-specific follow-up responsibilities
+
+- Issue #8 tracks bilingual FHEM commandref and release readiness; issue #9 tracks the standard FHEM `disable` attribute.
+- Issue #10 is the FHEM framework compatibility audit; record its verified reusable findings in the generic `AGENTS.md`, and WIFFI-only findings here.
+- Keep `README.md`, automated tests, the lifecycle matrix and Draft PR #1 aligned with demonstrated behavior; do not merge or call this module production-validated without explicit maintainer approval.
+
