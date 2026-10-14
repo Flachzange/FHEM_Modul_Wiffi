@@ -72,6 +72,8 @@ WIFFI_Collector_Initialize(\%module);
 is($module{Clients}, ':WIFFI_DEVICE:',
    'collector advertises logical WIFFI devices for core AssignIoPort');
 my $one = io('C1');
+my $single = device('Single','02:00:00:00:00:0B');
+is($single->{IODev},$one,'single available collector is auto-selected');
 my $two = io('C2');
 my $d = device('One','02:00:00:00:00:01');
 ok(!exists $d->{COLLECTOR},'new device has no shadow COLLECTOR internal');
@@ -80,6 +82,17 @@ is($d->{IODev},$one,'IODev holds collector hash reference');
 is($d->{DEF},'02:00:00:00:00:01','new definition remains MAC-only');
 WIFFI_Collector_ProcessFrame($one,packet('02:00:00:00:00:01','1'),'192.0.2.1');
 is($d->{READINGS}{w_counter1}{VAL},'1','assigned collector dispatches');
+my $io_conflict = JSON::PP::encode_json({
+  modultyp=>'PULSECOUNTER',
+  vars=>[{homematic_name=>'IODev',value=>'untrusted'}],
+  Systeminfo=>{'MAC-Adresse'=>'02:00:00:00:00:01'}
+});
+my $errors_before = $one->{FRAMES_ERROR};
+WIFFI_Collector_ProcessFrame($one,$io_conflict,'192.0.2.1');
+is($one->{FRAMES_ERROR},$errors_before+1,
+  'untrusted IODev measurement is rejected instead of overwriting FHEM IO binding');
+is($d->{READINGS}{IODev}{VAL},'C1',
+  'invalid IODev measurement leaves FHEM IODev association reading intact');
 WIFFI_Collector_ProcessFrame($two,packet('02:00:00:00:00:01','99'),'192.0.2.2');
 is($two->{FRAMES_UNKNOWN},1,'unassigned second collector ignores the device MAC');
 is($d->{READINGS}{w_counter1}{VAL},'1','wrong collector does not modify readings');
