@@ -1,6 +1,8 @@
 # FHEM WIFFI Collector
 
-Direkte FHEM-Anbindung für **WIFFI-pump 2, WEATHERMAN und PULSECOUNTER2-LAN** über TCP/JSON, ohne Node-RED oder MQTT. Ein Collector empfängt die Daten; jedes WIFFI erhält ein eigenes FHEM-Gerät.
+Direkte FHEM-Anbindung für klassische WIFFI-Geräte mit kompatiblem TCP/JSON-Telegrammformat, ohne Node-RED oder MQTT. Beispiele sind **WIFFI-pump 2, WEATHERMAN und PULSECOUNTER2-LAN**. Ein Collector empfängt die Daten; jedes WIFFI erhält ein eigenes FHEM-Gerät.
+
+Geräteinformationen, Firmware und Anleitungen: [STALL.biz](https://www.stall.biz/).
 
 **Stand: v0.2.1, experimentell.**
 
@@ -37,7 +39,7 @@ Die gerätespezifischen Befehle erscheinen nach dem ersten gültigen Telegramm.
 | --- | --- | --- |
 | WIFFI-pump 2 | `on`, `off`, `on-for-timer <Sekunden>` | Pumpe schalten; Timer 1–3600 Sekunden |
 | PULSECOUNTER | `counter <Kanal> <Wert>` | Kanal 1–4 setzen; Wert 0–999999, Dezimalpunkt |
-| Alle drei Typen | `reset` | Gerät neu starten, kein Werksreset |
+| WIFFI-pump, PULSECOUNTER, WEATHERMAN | `reset` | Gerät neu starten, kein Werksreset |
 | Alle WIFFI-Geräte | `httpGet <relativer Pfad>` | Expertenbefehl; kann die Gerätekonfiguration ändern |
 | Collector | `reopen` | TCP-Empfang schließen und erneut öffnen |
 
