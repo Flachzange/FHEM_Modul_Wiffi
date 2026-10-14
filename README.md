@@ -255,15 +255,16 @@ Existing `stateFormat` and `devStateIcon` attributes are **not changed automatic
 ### Webinterface link in FHEMWEB
 
 As soon as a logical WIFFI device has learned a validated TCP peer, FHEMWEB
-shows a **WIFFI Webinterface** link both on the device detail page and in the
-room/device overview. The target is always `http://<validated-peer>/` and
-opens in a new tab. No JSON-reported IP address or user-supplied host is used.
+shows a **WIFFI Webinterface** link on the **device detail page**, with a
+blank line before the Set controls. The link is **not** shown in the room
+overview. The target is always `http://<validated-peer>/` and opens in a
+new tab. No JSON-reported IP address or user-supplied host is used.
 The link disappears until a valid peer is known, for example immediately
 after an explicit `modify`.
 
-The implementation uses FHEM's module `FW_detailFn` integration while
-keeping the standard DeviceOverview enabled; `FW_addDetailToSummary` adds
-the same small link to the room overview.
+The implementation uses FHEM's module `FW_detailFn` and keeps the standard
+`DeviceOverview` enabled. FHEMWEB's `FW_addDetailToSummary` would create
+an unwanted separate row in the room overview, so it is deliberately omitted.
 
 ### Generic HTTP GET for every WIFFI device
 
