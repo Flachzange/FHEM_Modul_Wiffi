@@ -2,7 +2,7 @@
 
 **Issue:** [#4](https://github.com/Flachzange/FHEM_Modul_Wiffi/issues/4)  
 **Implementation branch:** `feat/tcp-collector-initial`  
-**Status:** isolated Perl unit tests pass; **no live FHEM integration run has been performed yet**. Do not mark the items below as verified until checked in a real installation.
+**Status:** isolated Perl regression tests pass; real FHEM telemetry and WIFFI-pump hardware control have been observed (see below), but **the dedicated listener/lifecycle acceptance matrix L01–L18 has not been executed**. Existing functional observations do not establish the results of lifecycle tests. Do not mark individual lifecycle rows as passed without scenario-specific evidence.
 
 ## Inspected reference behavior
 
@@ -12,7 +12,18 @@
 - FHEM `fhem.pl` from `mhop/fhem-mirror` (inspected 2026-10-14): `CommandDelete` returns immediately and **retains `%defs` and `%selectlist`** when `UndefFn` or `DeleteFn` returns an error. `CommandModify` invokes the module `DefFn` with `OLDDEF` set and restores the old `DEF` if it reports an error. These are the framework contracts for cleanup refusal handling, not guarantees of OS-level socket closure.
 - **Not a live environment revision:** file blob IDs are evidence of the inspected source content, not the revision of the user's installed FHEM.
 
-## Real FHEM test information (to fill in)
+## Observed live FHEM / physical WIFFI functionality (not a lifecycle sign-off)
+
+These observations were recorded during project development; they are **not** evidence of passing the complete socket, `rereadcfg`, `reload`, `modify`, `reopen` or failure-injection scenarios L01–L18.
+
+| Date | Scope | Observed result | Not established |
+| --- | --- | --- | --- |
+| 2026-10-10 | WIFFI-pump 2, real FHEM | TCP reception, automatic logical-device creation and updated telemetry; five connections/five accepted frames reported in the field test | Listener error recovery, concurrency, restart or long-term stability |
+| 2026-10-11 | WEATHERMAN, real FHEM | Valid telemetry/readings observed via collector | All firmware variants or lifecycle operations |
+| 2026-10-11 | PULSECOUNTER2-LAN (`counter_LAN41`), real FHEM | TCP-derived counters/readings and automatic creation observed on one physical device | Other PULSECOUNTER units, sustained reliability or overall error-free operation |
+| 2026-10-11 | WIFFI-pump 2 (`wiffi_pump2_110`), actual hardware | FHEMWEB `on` and `off` physically switched pump; subsequent `wiffi_pump` readings changed accordingly; `on-for-timer 30` started pump | Precise timer expiration not independently timed; generic `httpGet` and HTTP commands on other device types not field-tested |
+
+## Dedicated lifecycle staging test information (to fill in)
 
 | Item | Actual value |
 | --- | --- |
@@ -21,11 +32,11 @@
 | Host / platform / configuration backend (file or configDB) | NOT RECORDED |
 | Tested WIFFI collector port(s) | NOT RECORDED |
 | Firmware/model and observed TCP framing | NOT RECORDED |
-| Date of live test | NOT RUN |
+| Date of dedicated lifecycle staging run | NOT RUN |
 
 ## Lifecycle acceptance matrix
 
-All rows are **not yet verified on real FHEM**.
+All 18 **scenario-specific lifecycle test rows remain unverified** in a real FHEM staging installation. The separate, previously observed functional tests above do not fulfill their acceptance criteria.
 
 | ID | Scenario | Expected behavior and evidence to record | Live status |
 | --- | --- | --- | --- |
@@ -66,6 +77,6 @@ From the FHEM host's shell, optionally verify the actual TCP listener using `ss 
 
 `t/reentrancy.t` additionally injects synchronous Reading and DEFINED/ATTR callback actions (listener reopen/modify/delete, client and logical device delete/modify, plus identity-preserving renames). The tests use real WIFFI modules and FHEM contract doubles; actual DOIF/notify behavior, socket lifecycle, and configDB still need validation. 
 
-`t/lifecycle.t` checks callback registration, bind failure and recovery, repeated failure logging, manual reopen, active-child cleanup, failed `CommandDelete` / partial `DeleteFn` cleanup with no false listener recovery, manual retry, correct selectlist key on `modify` and `rename`, deferred startup rename, and undef/redefine behavior. `t/transport.t` checks connection limits and timeouts. Both use isolated FHEM mocks; they do **not** verify the full core event loop, configDB persistence, actual socket handles or select-list lifetime on the target system.
+`t/lifecycle.t` checks callback registration, bind failure and recovery, repeated failure logging, manual reopen, active-child cleanup, failed `CommandDelete` / partial `DeleteFn` cleanup with no false listener recovery, manual retry, correct selectlist key on `modify` and `rename`, deferred startup rename, and undef/redefine behavior. `t/transport.t` checks connection limits and timeouts. All seven tests run under isolated FHEM contract doubles, not a full FHEM runtime; they do **not** establish configDB persistence, physical socket handles or select-list lifetime on the target system.
 
 Issue #9 tracks the separate implementation of the standard FHEM `disable` attribute.
