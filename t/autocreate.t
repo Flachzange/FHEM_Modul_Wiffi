@@ -54,10 +54,15 @@ sub CommandAttr {
   my ($cl, $statement) = @_;
   my ($name, $key, $value) = split /\s+/, $statement, 3;
   return 'missing device' unless $defs{$name};
+  my $error = WIFFI_DEVICE_Attr('set', $name, $key, $value)
+    if $key eq 'IODev';
+  return $error if $error;
   $attr{$name}{$key} = $value;
+  AssignIoPort($defs{$name}, $value) if $key eq 'IODev';
   $on_attr->($name, $key) if $on_attr;
   return undef;
 }
+require './t/lib/WiffiIOStub.pm';
 require './FHEM/00_WIFFI_Collector.pm';
 require './FHEM/10_WIFFI_DEVICE.pm';
 
@@ -102,7 +107,9 @@ is($server->{FRAMES_OK}, 1, 'first telegram delivered');
 my $device = $defs{WIFFI_020000000001};
 ok($device, 'stable full-MAC FHEM device name');
 is($device->{MAC}, '02:00:00:00:00:01', 'device identity recorded');
-is($device->{COLLECTOR}, 'Collector', 'association retained');
+is($device->{IODev}, $server, 'IODev points to source collector');
+is($device->{DEF}, '02:00:00:00:00:01', 'autocreate persists MAC-only DEF');
+is($attr{WIFFI_020000000001}{IODev}, 'Collector', 'source collector attribute persisted');
 is($device->{READINGS}{w_counter1}{VAL}, '12.500', 'native CCU reading updated');
 is($device->{READINGS}{Systeminfo_sec_seit_reset}{VAL}, '120', 'heartbeat is present');
 ok($device->{FUUID}, 'FHEM CommandDefine assigned a synthetic identity');
@@ -159,7 +166,7 @@ is($device->{READINGS}{w_counter1}{VAL}, '14',
 # arbitrarily from hash iteration order.
 my $other = {
   NAME => 'Other', TYPE => 'WIFFI_DEVICE',
-  COLLECTOR => 'Collector', MAC => '02:00:00:00:00:01',
+  IODev => $server, MAC => '02:00:00:00:00:01',
   READINGS => {}
 };
 $defs{Other} = $other;
@@ -637,9 +644,9 @@ $server = start_case();
 $attr{Collector}{logRejectedPayload} = 1;
 my $identity_packet = telegram('02:00:00:00:00:01', '192.0.2.21', '5');
 my $identity_second = { NAME => 'Duplicate', TYPE => 'WIFFI_DEVICE',
-  COLLECTOR => 'Collector', MAC => '02:00:00:00:00:01' };
+  IODev => $server, MAC => '02:00:00:00:00:01' };
 my $identity_first = { NAME => 'Original', TYPE => 'WIFFI_DEVICE',
-  COLLECTOR => 'Collector', MAC => '02:00:00:00:00:01' };
+  IODev => $server, MAC => '02:00:00:00:00:01' };
 $defs{Duplicate} = $identity_second;
 $defs{Original} = $identity_first;
 WIFFI_Collector_ProcessFrame($server, $identity_packet, '192.0.2.21');
