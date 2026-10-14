@@ -41,4 +41,85 @@ my $duplicate = '{"modultyp":"wiffi-pump","vars":['
 eval { WIFFI_Collector_Decode($duplicate) };
 like($@, qr/duplicate CCU name/, 'duplicate names rejected');
 
+
+# Absent optional measurements are valid; malformed *present* entries are not.
+my $weather = '{"modultyp":"weatherman","vars":['
+  .'{"homematic_name":"w_temperatur","value":"12.3","type":"number"}'
+  .'],"Systeminfo":{"MAC-Adresse":"e8:db:84:98:c6:d3","sec_seit_reset":77}}';
+my $weather_packet = WIFFI_Collector_Decode($weather);
+is($weather_packet->{readings}{w_temperatur}, '12.3',
+  'optional WEATHERMAN brightness can be absent');
+ok(!exists $weather_packet->{readings}{w_lux},
+  'no invented brightness reading');
+
+my $pump = '{"modultyp":"wiffi-pump","vars":['
+  .'{"homematic_name":"wiffi_pump","type":"boolean","value":false},'
+  .'{"homematic_name":"wiffi_ntc","type":"boolean","value":"true"}'
+  .'],"Systeminfo":{"MAC-Adresse":"b4:e6:2d:17:db:07","sec_seit_reset":1,'
+  .'"restart":false}}';
+my $pump_packet = WIFFI_Collector_Decode($pump);
+is($pump_packet->{readings}{wiffi_pump}, 'false', 'JSON boolean preserved');
+is($pump_packet->{readings}{wiffi_ntc}, 'true', 'string boolean preserved');
+is($pump_packet->{readings}{Systeminfo_restart}, 'false',
+   'valid Systeminfo boolean not silently discarded');
+
+my $prefix = '{"modultyp":"weatherman","vars":';
+my $system = ',"Systeminfo":{"MAC-Adresse":"e8:db:84:98:c6:d3","sec_seit_reset":1}}';
+my @bad_entries = (
+  ['non-object entry', '[{"homematic_name":"w_ok","value":1},null]',
+     qr/vars\[1\]: expected JSON object/],
+  ['missing name', '[{"value":1}]', qr/invalid homematic_name/],
+  ['null name', '[{"homematic_name":null,"value":1}]', qr/invalid homematic_name/],
+  ['object name', '[{"homematic_name":{},"value":1}]', qr/invalid homematic_name/],
+  ['invalid name', '[{"homematic_name":"bad name","value":1}]',
+     qr/invalid homematic_name/],
+  ['missing value', '[{"homematic_name":"w_test"}]', qr/missing or null value/],
+  ['null value', '[{"homematic_name":"w_test","value":null}]',
+     qr/missing or null value/],
+  ['array value', '[{"homematic_name":"w_test","value":[1]}]',
+     qr/unsupported value type/],
+  ['object value', '[{"homematic_name":"w_test","value":{}}]',
+     qr/unsupported value type/],
+  ['invalid optional identifier', '[{"name":[],"homematic_name":"w_test","value":1}]',
+     qr/invalid name/],
+  ['invalid optional type', '[{"type":{},"homematic_name":"w_test","value":1}]',
+     qr/invalid type/],
+  ['duplicate name', '[{"homematic_name":"w_test","value":1},'
+    .'{"homematic_name":"w_test","value":2}]', qr/duplicate CCU name/],
+  ['reserved state', '[{"homematic_name":"state","value":1}]',
+     qr/reserved state/],
+  ['Systeminfo collision', '[{"homematic_name":"Systeminfo_sec_seit_reset","value":1}]',
+     qr/reading name collision/],
+);
+for my $case (@bad_entries) {
+  my ($label, $vars, $expected) = @$case;
+  my $result = eval { WIFFI_Collector_Decode($prefix.$vars.$system) };
+  ok(!defined($result) && $@ =~ $expected, "$label rejected");
+}
+
+my @bad_system = (
+  ['missing Systeminfo', '{"modultyp":"weatherman","vars":[]}', qr/missing Systeminfo/],
+  ['missing MAC', '{"modultyp":"weatherman","vars":[],"Systeminfo":{"sec_seit_reset":1}}',
+     qr/invalid MAC-Adresse/],
+  ['invalid MAC type', '{"modultyp":"weatherman","vars":[],"Systeminfo":{"MAC-Adresse":[]}}',
+     qr/invalid MAC-Adresse/],
+  ['null Systeminfo value', '{"modultyp":"weatherman","vars":[],"Systeminfo":{'
+     .'"MAC-Adresse":"e8:db:84:98:c6:d3","sec_seit_reset":null}}',
+     qr/Systeminfo: missing or null value/],
+  ['object Systeminfo value', '{"modultyp":"weatherman","vars":[],"Systeminfo":{'
+     .'"MAC-Adresse":"e8:db:84:98:c6:d3","other":{}}}',
+     qr/Systeminfo: unsupported value type/],
+  ['invalid Systeminfo key', '{"modultyp":"weatherman","vars":[],"Systeminfo":{'
+     .'"MAC-Adresse":"e8:db:84:98:c6:d3","bad field":"x"}}',
+     qr/Systeminfo: invalid field name/],
+  ['invalid module type', '{"modultyp":{},"vars":[],"Systeminfo":{'
+     .'"MAC-Adresse":"e8:db:84:98:c6:d3"}}',
+     qr/invalid modultyp/],
+);
+for my $case (@bad_system) {
+  my ($label, $telegram, $expected) = @$case;
+  my $result = eval { WIFFI_Collector_Decode($telegram) };
+  ok(!defined($result) && $@ =~ $expected, "$label rejected");
+}
+
 done_testing();
