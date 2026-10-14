@@ -1,6 +1,6 @@
 # WIFFI Collector release verification
 
-Use this checklist when preparing a **new release**; it is not part of the FHEM user-facing commandref. Record the actual test environment and outcomes in the release PR or issue rather than claiming coverage based only on mock tests.
+Use this checklist when preparing a **new release**; it is not part of the FHEM user-facing commandref. Record actual test environment and outcomes rather than claiming coverage based only on mocks. **Maintainer decision (2026-10-14): the comprehensive L01–L18/D01–D08 staging and failure-injection tests will not be carried out for the initial experimental branch-to-main merge.** They are not a pending merge task; their risks remain explicitly documented in [the lifecycle matrix](fhem-lifecycle-test-matrix.md). This is **not** a claim that they passed or a blanket certification for later distributable releases. For a future release, discuss any additional checks only if justified by new requirements or a concrete defect.
 
 ## Module and documentation checks
 
