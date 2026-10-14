@@ -13,7 +13,8 @@ use lib 't/lib';
 our (%defs, %attr, %selectlist, $init_done, $readingFnAttributes);
 $init_done = 1;
 $readingFnAttributes = '';
-my (@accepted, @logs, @timers, @writers, @events, $on_update);
+my (@accepted, @logs, @timers, @writers, @events,
+    $on_update, $on_define, $on_attr);
 sub AttrVal {
   my ($name, $key, $default) = @_;
   return exists $attr{$name}{$key} ? $attr{$name}{$key} : $default;
@@ -85,12 +86,23 @@ sub CommandDefine {
   return "name collision" if $defs{$name};
   my $hash={NAME=>$name,TYPE=>$type,DEF=>(split /\s+/, $def,3)[2]};
   $defs{$name}=$hash;
-  return WIFFI_DEVICE_Define($hash,$def);
+  my $error = WIFFI_DEVICE_Define($hash,$def);
+  if (!$error && $on_define) {
+    my $callback=$on_define;
+    undef $on_define;
+    $callback->($hash);  # core's synchronous DEFINED notification
+  }
+  return $error;
 }
 sub CommandAttr {
   my ($cl,$def) = @_;
   my ($name,$key,$value)=split /\s+/, $def,3;
   $attr{$name}{$key}=$value;
+  if ($on_attr) {
+    my $callback=$on_attr;
+    undef $on_attr;
+    $callback->($name,$key);  # core's synchronous ATTR notification
+  }
   return undef;
 }
 
@@ -102,6 +114,8 @@ sub reset_case {
   %defs=(); %attr=(); %selectlist=();
   @accepted=(); @logs=(); @timers=(); @writers=(); @events=();
   undef $on_update;
+  undef $on_define;
+  undef $on_attr;
   my $server={NAME=>'Collector',TYPE=>'WIFFI_Collector'};
   $defs{Collector}=$server;
   is(WIFFI_Collector_Define($server,'Collector WIFFI_Collector 9195'),
@@ -193,14 +207,24 @@ ok(exists $selectlist{'Collector.9295'},'modified listener remains healthy');
 ($server,$device)=reset_case();
 $on_update=sub { is(CommandDelete(undef,'Collector_reentrant_client-delete'),undef,
     'reentrant client deletion succeeds') };
-# Callback captures the assigned client name after setup; construction needs
-# the same deterministic name as send_frames().
+# Match the deterministic FHEM temporary-client name used by send_frames().
 $client=send_frames($server,'client-delete',31,32);
 ok(!exists $defs{$client->{NAME}},'deleted TCP client does not reappear');
 is($device->{READINGS}{w_counter1}{VAL},31,'client delete drops second frame');
 is(scalar @events,1,'client deletion stops queued updates');
 is($server->{FRAMES_OK},1,'only delivered frame counted');
 is($server->{FRAMES_ERROR},0,'intentional deletion not parser error');
+
+($server,$device)=reset_case();
+$on_update=sub { is(CommandDelete(undef,'Collector'),undef,
+    'synchronous collector deletion succeeds') };
+$client=send_frames($server,'collector-delete',35,36);
+ok(!exists $defs{Collector},'collector deleted while processing first frame');
+ok(!exists $defs{$client->{NAME}},'collector deletion removes temporary client');
+is(scalar @events,1,'only the first frame event fired before collector delete');
+is($device->{READINGS}{w_counter1}{VAL},35,'second frame not delivered after delete');
+is($server->{FRAMES_OK},0,'deleted collector does not count a stale frame');
+is($server->{FRAMES_ERROR},0,'deleted collector is not a parsing failure');
 
 ($server,$device)=reset_case();
 $on_update=sub { is(CommandDelete(undef,'Pump'),undef,
@@ -275,5 +299,36 @@ ok($defs{WIFFI_020000000001},'autocreate remains functional');
 is($defs{WIFFI_020000000001}{READINGS}{w_counter1}{VAL},92,
   'autocreated device receives second frame');
 CommandDelete(undef,$client->{NAME});
+
+# Synchronous DEFINED/ATTR callbacks can also reopen the listener before
+# the newly auto-created device has received its first readings.
+($server,$device)=reset_case();
+$attr{Collector}{autocreate}=1;
+delete $defs{Pump};
+$on_define=sub {
+  is(WIFFI_Collector_Set($server,'Collector','reopen'),undef,
+     'DEFINED event may synchronously reopen collector');
+};
+$client=send_frames($server,'defined-reopen',101,102);
+is($server->{FRAMES_OK},0,'DEFINED reopen publishes neither queued frame');
+is(scalar @events,0,'no reading updates after DEFINED invalidation');
+ok(!$defs{$client->{NAME}},'old connection closed by DEFINED callback');
+ok($defs{WIFFI_020000000001},'logical device remains explicitly created');
+ok(!exists $defs{WIFFI_020000000001}{READINGS}{w_counter1},
+   'no stale reading written after DEFINED reopen');
+
+($server,$device)=reset_case();
+$attr{Collector}{autocreate}=1;
+delete $defs{Pump};
+$on_attr=sub {
+  is(WIFFI_Collector_Set($server,'Collector','reopen'),undef,
+    'ATTR event may synchronously reopen collector');
+};
+$client=send_frames($server,'attr-reopen',111,112);
+is($server->{FRAMES_OK},0,'ATTR reopen publishes neither queued frame');
+is(scalar @events,0,'ATTR event interruption stops data dispatch');
+ok(!$defs{$client->{NAME}},'old connection closed by ATTR callback');
+ok(!exists $defs{WIFFI_020000000001}{READINGS}{w_counter1},
+   'no stale device reading written after ATTR reopen');
 
 done_testing();
