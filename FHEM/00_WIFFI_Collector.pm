@@ -398,7 +398,8 @@ sub WIFFI_Collector_Read {
   # First extract ALL complete frames. Their combined size is not limited by
   # MAX_FRAME; only an individual complete frame or the unfinished tail is.
   my @frames = WIFFI_Collector_ExtractFrames(\$hash->{BUF});
-  for my $frame (@frames) {
+  for my $index (0 .. $#frames) {
+    my $frame = $frames[$index];
     last unless WIFFI_Collector_ClientCurrent($hash, $server, $generation);
     my $keep_connection = 1;
     if (length($frame) > $max_frame) {
@@ -418,8 +419,10 @@ sub WIFFI_Collector_Read {
     }
     if (!$keep_connection
         || !WIFFI_Collector_ClientCurrent($hash, $server, $generation)) {
+      my $dropped = $#frames - $index;
       Log3($server, 3, "$server->{NAME}: TCP frame batch stopped after ".
-        "reentrant FHEM device or listener change ($hash->{PEER})");
+        "reentrant FHEM device or listener change ($hash->{PEER}); ".
+        "discarding $dropped remaining complete frame(s)");
       return;
     }
   }
@@ -433,6 +436,9 @@ sub WIFFI_Collector_Read {
   }
 }
 
+# Return 1 to continue processing coalesced frames (even if this individual
+# telegram was rejected), or 0 if a synchronous FHEM event invalidated the
+# current target/connection. Direct decoder callers may omit client context.
 sub WIFFI_Collector_ProcessFrame {
   my ($server, $raw, $peer, $client, $generation) = @_;
   my $packet = eval { WIFFI_Collector_Decode($raw) };
