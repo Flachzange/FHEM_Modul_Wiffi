@@ -4,6 +4,7 @@ package main;
 use strict;
 use warnings;
 use HttpUtils;
+use FHEM::Meta;
 use vars qw(%defs $readingFnAttributes);
 
 sub WIFFI_DEVICE_Initialize {
@@ -15,6 +16,7 @@ sub WIFFI_DEVICE_Initialize {
   $hash->{FW_detailFn} = 'WIFFI_DEVICE_FwDetail';
   $hash->{FW_deviceOverview} = 1;
   $hash->{AttrList} = 'stripReadingPrefix:0,1 disable:0,1 '.$readingFnAttributes;
+  return FHEM::Meta::InitMod(__FILE__, $hash);
 }
 
 sub WIFFI_DEVICE_Attr {
@@ -48,6 +50,7 @@ sub WIFFI_DEVICE_Define {
   }
   my $normalized = WIFFI_Collector_NormalizeMac($mac);
   return 'Invalid WIFFI MAC address' unless $normalized;
+  return $@ unless FHEM::Meta::SetInternals($hash);
   # A successful modify invalidates any in-flight frame targeting the
   # previous definition; plain rename keeps the same definition generation.
   ++$hash->{'.WIFFI_DEFINITION_GEN'} if exists $hash->{OLDDEF};
@@ -227,6 +230,7 @@ sub WIFFI_DEVICE_Process {
   }
   $hash->{PEER} = $peer;
   $hash->{MODULTYP} = $data->{modultyp};
+  $hash->{LAST_TELEGRAM} = TimeNow();
   readingsBeginUpdate($hash);
   for my $reading (sort keys %mapped) {
     readingsBulkUpdate($hash, $reading, $mapped{$reading});
@@ -501,5 +505,16 @@ sub WIFFI_DEVICE_Process {
 </ul>
 
 =end html_DE
+
+=for :application/json;q=META.json 10_WIFFI_DEVICE.pm
+{
+  "name": "FHEM-WIFFI-Device",
+  "abstract": "Logical FHEM receiver for one WIFFI device",
+  "version": "v0.1.0",
+  "author": ["Flachzange"],
+  "license": ["open_source"],
+  "release_status": "testing"
+}
+=end :application/json;q=META.json
 
 =cut
