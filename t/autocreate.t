@@ -694,4 +694,20 @@ is($disabled_device->{READINGS}{w_counter1}{VAL},'30',
 is($server->{FRAMES_OK},3,'re-enabled frame counted as published');
 is($server->{AUTOCREATED},2,'no extra device created on re-enable');
 
+# Autocreate must bind the *receiving* collector even when multiple providers
+# advertise the same logical client type (no generic last-defined guessing).
+$server = start_case();
+$attr{Collector}{autocreate} = 1;
+$defs{OtherCollector} = {
+  NAME=>'OtherCollector', TYPE=>'WIFFI_Collector',
+  FRAMES_OK=>0, FRAMES_ERROR=>0, FRAMES_UNKNOWN=>0
+};
+WIFFI_Collector_ProcessFrame($server,
+  telegram('02:00:00:00:00:0F','192.0.2.47','1'),'192.0.2.47');
+my $pinned = $defs{WIFFI_02000000000F};
+ok($pinned, 'autocreate works with two collectors defined');
+is($pinned->{IODev},$server, 'new device IODev is receiving collector');
+is($attr{$pinned->{NAME}}{IODev},'Collector','source IODev persisted');
+is($pinned->{DEF},'02:00:00:00:00:0F','saved device DEF contains MAC only');
+
 done_testing();
