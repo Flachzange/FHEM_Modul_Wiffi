@@ -264,6 +264,91 @@ is($attr{$pump_name}{stateFormat}, 'online',
   'later telegrams preserve custom pump state format');
 is($server->{AUTOCREATED}, 1, 'repeat pump telegram does not autocreate again');
 
+# A valid type change is adopted and diagnosed; the allowed SetFn commands
+# follow the *current* type. No second identity or persistent type is needed.
+$server = start_case();
+$attr{Collector}{autocreate} = 1;
+my $type_mac = '02:00:00:00:00:09';
+my $type_name = 'WIFFI_020000000009';
+WIFFI_Collector_ProcessFrame($server,
+  telegram($type_mac, '192.0.2.29', '1', 'wiffi-pump'), '192.0.2.29');
+my $typed = $defs{$type_name};
+is($typed->{MODULTYP}, 'wiffi-pump', 'first valid telegram establishes pump type');
+like(WIFFI_DEVICE_Set($typed, $type_name, '?'),
+  qr/choose one of on off on-for-timer httpGet\z/,
+  'pump shortcuts offered for pump type');
+is(scalar(grep {/WIFFI modultyp changed:/} @logs), 0,
+  'first observed type does not count as a transition');
+WIFFI_Collector_ProcessFrame($server,
+  telegram($type_mac, '192.0.2.29', '2', 'wiffi-pump'), '192.0.2.29');
+is(scalar(grep {/WIFFI modultyp changed:/} @logs), 0,
+  'unchanged type does not generate transition logs');
+WIFFI_Collector_ProcessFrame($server,
+  telegram($type_mac, '192.0.2.29', '3', 'PULSECOUNTER'), '192.0.2.29');
+is($typed->{MODULTYP}, 'PULSECOUNTER', 'changed type accepted from same MAC');
+is($typed->{READINGS}{w_counter1}{VAL}, '3', 'changed-type telegram updates readings');
+is($server->{FRAMES_OK}, 3, 'accepted type switch is a valid frame');
+is($server->{FRAMES_ERROR}, 0, 'accepted type switch is not a frame error');
+like(WIFFI_DEVICE_Set($typed, $type_name, '?'),
+  qr/choose one of httpGet\z/,
+  'after type change only generic setter advertised');
+like(WIFFI_DEVICE_Set($typed, $type_name, 'on'),
+  qr/Unknown argument.*httpGet/,
+  'old pump on command is refused after type change');
+like(WIFFI_DEVICE_Set($typed, $type_name, 'on-for-timer', 30),
+  qr/Unknown argument.*httpGet/,
+  'old timer command is refused after type change');
+like(join(' ', @logs), qr/WIFFI modultyp changed: wiffi-pump -> PULSECOUNTER/,
+  'type change logged with prior and current type');
+is(scalar(grep {/WIFFI modultyp changed:/} @logs), 1,
+  'transition logged exactly once');
+is($attr{$type_name}{stateFormat}, 'wiffi_pump',
+  'type transition preserves previously assigned stateFormat');
+is($attr{$type_name}{devStateIcon}, 'true:on false:off',
+  'type transition preserves previous icon without hidden attr migration');
+WIFFI_Collector_ProcessFrame($server,
+  telegram($type_mac, '192.0.2.29', '4', 'PULSECOUNTER'), '192.0.2.29');
+is(scalar(grep {/WIFFI modultyp changed:/} @logs), 1,
+  'repeated PULSECOUNTER telegram does not spam transition logs');
+WIFFI_Collector_ProcessFrame($server,
+  telegram($type_mac, '192.0.2.29', '5', 'wiffi-pump'), '192.0.2.29');
+is($typed->{MODULTYP}, 'wiffi-pump', 'later pump type restored');
+like(WIFFI_DEVICE_Set($typed, $type_name, '?'),
+  qr/choose one of on off on-for-timer httpGet\z/,
+  'pump shortcuts reappear after a valid pump telegram');
+is($server->{FRAMES_OK}, 5, 'all type transitions accepted');
+is($server->{FRAMES_ERROR}, 0, 'no parser errors from type transitions');
+is(scalar(grep {/WIFFI modultyp changed:/} @logs), 2,
+  'pump-to-counter and counter-to-pump each logged once');
+$typed->{OLDDEF} = $typed->{DEF};
+is(WIFFI_DEVICE_Define($typed,
+    "$type_name WIFFI_DEVICE Collector $type_mac"), undef,
+  'explicit device modify succeeds after type transitions');
+delete $typed->{OLDDEF};
+ok(!exists $typed->{MODULTYP}, 'modify clears observed type');
+like(WIFFI_DEVICE_Set($typed, $type_name, '?'),
+  qr/choose one of httpGet\z/,
+  'after modify no stale pump shortcuts before telemetry');
+WIFFI_Collector_ProcessFrame($server,
+  telegram($type_mac, '192.0.2.29', '6', 'PULSECOUNTER'), '192.0.2.29');
+is($typed->{MODULTYP}, 'PULSECOUNTER', 'first post-modify telegram establishes type');
+is(scalar(grep {/WIFFI modultyp changed:/} @logs), 2,
+  'first type after modify is not incorrectly logged as transition');
+
+# A restart-like new definition starts without an old in-memory type.
+$server = start_case();
+$attr{Collector}{autocreate} = 1;
+WIFFI_Collector_ProcessFrame($server,
+  telegram($type_mac, '192.0.2.29', '7', 'PULSECOUNTER'), '192.0.2.29');
+$typed = $defs{$type_name};
+is($typed->{MODULTYP}, 'PULSECOUNTER',
+  'fresh device after restart-like reset accepts first advertised type');
+like(WIFFI_DEVICE_Set($typed, $type_name, '?'),
+  qr/choose one of httpGet\z/,
+  'restart-like initial non-pump telegram exposes no pump shortcuts');
+is(scalar(grep {/WIFFI modultyp changed:/} @logs), 0,
+  'fresh in-memory type after restart-like reset has no transition log');
+
 # DEFINED handlers can set their own defaults before autocreate applies ours.
 $server = start_case();
 $attr{Collector}{autocreate} = 1;
