@@ -331,16 +331,21 @@ sub WIFFI_DEVICE_Process {
       hex octets, or exactly 12 hex digits without separators).
       Example:
       <code>define WIFFI_PUMP2 WIFFI_DEVICE 02:00:00:00:00:01</code>.
-      With a single collector, FHEM can assign IODev automatically;
-      with several collectors, set <code>attr &lt;name&gt; IODev &lt;collector&gt;</code>
-      explicitly. Newly autocreated devices always receive an explicit
-      IODev attribute for the source collector.</li>
-  <li>Existing definitions using
-      <code>define &lt;name&gt; WIFFI_DEVICE &lt;collector&gt; &lt;MAC&gt;</code>
-      remain supported for compatibility. To migrate without recreating
-      the device: first set <code>attr &lt;name&gt; IODev &lt;collector&gt;</code>,
-      then <code>modify &lt;name&gt; &lt;MAC&gt;</code> and save your
-      FHEM configuration.</li>
+      When exactly one active collector is available at interactive
+      definition time, its <code>IODev</code> attribute is set automatically
+      and can be saved with <code>save</code>. With multiple collectors,
+      no arbitrary IODev is selected; use
+      <code>attr &lt;name&gt; IODev &lt;collector&gt;</code> or specify
+      the collector directly in the define command.</li>
+  <li><code>define &lt;name&gt; WIFFI_DEVICE &lt;collector&gt; &lt;MAC&gt;</code><br>
+      Explicitly choose the collector during manual creation. This sets
+      the persistent <code>IODev</code> attribute and retains only the MAC
+      in <code>DEF</code>. Autocreate likewise persists the receiving
+      collector. Previously saved collector-plus-MAC definitions remain
+      readable without being rewritten during FHEM startup. To migrate
+      an existing device without recreating it, set its
+      <code>IODev</code> attribute, then run
+      <code>modify &lt;name&gt; &lt;MAC&gt;</code> and <code>save</code>.</li>
 </ul>
 <a id="WIFFI_DEVICE-set"></a>
 <h4>Set</h4>
@@ -470,16 +475,21 @@ sub WIFFI_DEVICE_Process {
       (sechs Hex-Oktette mit Doppelpunkten oder zw&ouml;lf Hex-Zeichen
       ohne Trennzeichen). Beispiel:
       <code>define WIFFI_PUMP2 WIFFI_DEVICE 02:00:00:00:00:01</code>.
-      Bei einem einzigen Collector kann FHEM IODev automatisch zuweisen.
-      Bei mehreren Collectors <code>attr &lt;name&gt; IODev &lt;collector&gt;</code>
-      explizit setzen. Beim Autocreate wird das IODev-Attribut
-      immer auf den empfangenden Collector gesetzt.</li>
-  <li>Alte Definitionen der Form
-      <code>define &lt;name&gt; WIFFI_DEVICE &lt;collector&gt; &lt;MAC&gt;</code>
-      bleiben kompatibel. Umstellung ohne Neuanlage:
-      zuerst <code>attr &lt;name&gt; IODev &lt;collector&gt;</code>,
-      dann <code>modify &lt;name&gt; &lt;MAC&gt;</code> und
-      die FHEM-Konfiguration speichern.</li>
+      Ist bei der manuellen Neuanlage genau ein aktiver Collector
+      verf&uuml;gbar, wird dessen <code>IODev</code>-Attribut automatisch
+      gesetzt und mit <code>save</code> gespeichert.
+      Bei mehreren Collectors erfolgt keine zuf&auml;llige Auswahl:
+      <code>attr &lt;name&gt; IODev &lt;collector&gt;</code> setzen oder
+      den Collector gleich beim Define angeben.</li>
+  <li><code>define &lt;name&gt; WIFFI_DEVICE &lt;collector&gt; &lt;MAC&gt;</code><br>
+      Legt den Collector bereits bei der manuellen Neuanlage fest.
+      Das <code>IODev</code>-Attribut wird automatisch gesetzt;
+      in <code>DEF</code> bleibt nur die MAC-Adresse.
+      Autocreate speichert ebenso den empfangenden Collector.
+      Alte gespeicherte Collector-plus-MAC-Definitionen bleiben lesbar
+      und werden beim FHEM-Start nicht automatisch umgeschrieben.
+      Migration ohne Neuanlage: zuerst <code>attr &lt;name&gt; IODev &lt;collector&gt;</code>,
+      dann <code>modify &lt;name&gt; &lt;MAC&gt;</code> und <code>save</code>.</li>
 </ul>
 <a id="WIFFI_DEVICE-set"></a>
 <h4>Set</h4>
