@@ -50,6 +50,8 @@ sub TcpServer_Close {
     # FHEM's TcpServer_Close leaves SERVERSOCKET in the hash.
     return undef;
   }
+  delete $hash->{CD} if defined $hash->{CD}; # Real TcpServer_Close closes and clears the socket.
+  delete $hash->{FD};
   delete $selectlist{$hash->{NAME}};
   push @closed, $hash->{NAME};
   return undef;
