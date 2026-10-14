@@ -232,7 +232,9 @@ sub WIFFI_Collector_Define {
     return undef;
   }
   InternalTimer(0, sub {
-    return unless $defs{$name} && $defs{$name} == $hash;
+    # The collector may have been renamed before startup initialization ends.
+    my $current_name = $hash->{NAME};
+    return unless $defs{$current_name} && $defs{$current_name} == $hash;
     WIFFI_Collector_OpenListener($hash);
   }, $hash, 0);
   return undef;
