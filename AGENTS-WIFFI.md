@@ -21,7 +21,7 @@
 - `vars[].name` is a protocol variable identifier, not the default public reading name. Preserve it as useful internal context when needed for identity/validation.
 - Keep each device's readings on its own logical `WIFFI_DEVICE`; identical `homematic_name` values on *different devices* are valid.
 - Keep `Systeminfo` readings in a separately documented namespace such as `Systeminfo_firmware` and `Systeminfo_sec_seit_reset`, without collisions with sensor readings.
-- Normalize valid MAC spellings (for example `b4:e6:2d:17:db:7` and `B4:E6:2D:17:DB:07`) for lookup while retaining enough raw context for diagnosis.
+- Normalize valid MAC spellings (for example synthetic `02:00:00:00:00:1` and `02:00:00:00:00:01`) for lookup while retaining enough raw context for diagnosis.
 - MAC identification is not absolute proof of uniqueness. The two PULSECOUNTER2-LAN units originally advertised the same MAC until parameter 6 was changed. Detect conflicting simultaneous MAC/IP identities; never silently merge different physical devices. A change of sender IP requires an explicit, justified policy.
 - Compare TCP peer identity with payload identity where available, but account for routed/NATed setups and do not blindly trust a self-reported IP address.
 - Preserve device values without undocumented rounding, unit conversion, clamping, or zero substitution. This is especially important for large PULSECOUNTER counters, precision, `type:number` values encoded as strings, and `type:boolean` values encoded as `"false"`/`"true"`.
