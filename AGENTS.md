@@ -87,7 +87,7 @@ This repository develops an event-driven FHEM integration for the classic STALL 
 
 ## Tests: fidelity over green checks
 
-- The current CI suite is `prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t t/transport.t t/lifecycle.t`; GitHub Actions also performs isolated Perl syntax checks. These checks do **not** establish that real FHEM listener, callbacks, or lifecycle behavior works. Keep this list synchronized with `.github/workflows/perl-tests.yml`.
+- The current CI suite is `prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t t/transport.t t/lifecycle.t t/reentrancy.t`; GitHub Actions also performs isolated Perl syntax checks. These checks do **not** establish that real FHEM listener, callbacks, or lifecycle behavior works. Keep this list synchronized with `.github/workflows/perl-tests.yml`.
 - Before presenting a collector implementation as ready, add integration-oriented tests that exercise real or faithfully modeled FHEM accept/read/dispatch/close behavior. Track any framework stubs' provenance and limitations.
 - A stub must reproduce *all relevant side effects* for the claim being tested (event publication, return handling, timer ownership, socket/FD registration, `%defs`, `%selectlist`, `CommandDelete`, etc.). A no-op stub must never be cited as evidence for behavior it omits.
 - Test: split and concatenated TCP telegrams; ETX/EOT and EOF; payloads without terminators; oversized and malformed frames; UTF-8, invalid JSON, missing/duplicate names; different firmware-type values; reconnect, duplicate MACs/IP conflicts; unknown and renamed devices; autocreate collision/injection.
