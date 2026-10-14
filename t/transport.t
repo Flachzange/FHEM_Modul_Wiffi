@@ -111,7 +111,7 @@ is($server->{MAX_CLIENTS}, 16, 'default client limit is 16');
 is($server->{CLIENT_IDLE_TIMEOUT}, 60, 'idle timeout is 60 seconds');
 is($server->{CLIENT_MAX_LIFETIME}, 180, 'absolute client lifetime is bounded');
 my $device = { NAME => 'Pulse', TYPE => 'WIFFI_DEVICE',
-               COLLECTOR => 'Collector', MAC => '02:00:00:00:00:01',
+               IODev => $server, MAC => '02:00:00:00:00:01',
                READINGS => {} };
 $defs{Pulse} = $device;
 
