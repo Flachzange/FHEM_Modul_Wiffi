@@ -20,6 +20,7 @@ sub AttrVal {
   return exists $attr{$name}{$key} ? $attr{$name}{$key} : $default;
 }
 sub Log3 { push @logs, $_[2] }
+sub TimeNow { return '2026-10-14 15:00:00' }
 sub readingsSingleUpdate { $_[0]{READINGS}{$_[1]}{VAL} = $_[2] }
 sub readingsBeginUpdate { $_[0]{'.in_update'} = 1 }
 sub readingsBulkUpdate {
