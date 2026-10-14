@@ -253,9 +253,10 @@ sub WIFFI_Collector_Attr {
 
 sub WIFFI_Collector_Define {
   my ($hash, $def) = @_;
-  my ($name, $type, $port) = split /\s+/, $def;
+  my @parts = split /\s+/, $def;
+  my ($name, $type, $port) = @parts;
   return 'Usage: define <name> WIFFI_Collector <tcp-port>'
-    unless defined $port && $port =~ /\A[0-9]{1,5}\z/
+    unless @parts == 3 && $port =~ /\A[0-9]{1,5}\z/
       && $port >= 1 && $port <= 65535;
 
   # FHEM invokes DefFn on modify with OLDDEF set, reusing the same hash.
