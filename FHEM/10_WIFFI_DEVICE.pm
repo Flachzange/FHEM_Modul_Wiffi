@@ -78,6 +78,10 @@ sub WIFFI_DEVICE_Define {
   my $normalized = WIFFI_Collector_NormalizeMac($mac);
   return 'Invalid WIFFI MAC address' unless $normalized;
   return $@ unless FHEM::Meta::SetInternals($hash);
+  # FHEM::Meta does not synthesize x_version for non-SVN modules with
+  # an explicit META.json version. Keep its standard FVERSION INTERNAL.
+  $hash->{FVERSION} //= '10_WIFFI_DEVICE.pm:' .
+    version->parse(FHEM::Meta::Get($hash, 'version'))->normal;
 
   # During configuration restore, do not create/change attributes: they
   # are loaded separately, possibly after the device and its collector.
