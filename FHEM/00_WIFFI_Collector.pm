@@ -174,7 +174,7 @@ sub WIFFI_Collector_CloseListener {
     $detail = substr($detail, 0, 500);
     Log3($hash, 1, "$name: TCP client $client_name cleanup failed".
       (defined $reason ? " ($reason)" : '').": $detail");
-    push @failed, $client_name;
+    push @failed, "$client_name: $detail";
   }
   if (defined $hash->{SERVERSOCKET}) {
     TcpServer_Close($hash);
