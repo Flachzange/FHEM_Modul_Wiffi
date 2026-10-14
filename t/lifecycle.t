@@ -98,6 +98,9 @@ is($initialized_module->{SetFn}, 'WIFFI_Collector_Set',
 is($initialized_module->{RenameFn}, 'WIFFI_Collector_Rename',
    'standard RenameFn callback registered');
 is($h->{LISTENER_STATUS}, 'listening', 'listener status INTERNAL set on success');
+is($h->{CLIENTS_TIMEOUT}, 0, 'CLIENTS_TIMEOUT initialized on first define');
+ok(!exists $h->{READINGS}{CLIENTS_TIMEOUT},
+   'timeout counter is INTERNAL-only');
 is($h->{LISTENER_ERROR}, '', 'listener error INTERNAL cleared on success');
 ok(exists $selectlist{'Collector.9195'}, 'listening socket registered');
 ok(!exists $h->{READINGS}{LISTENER_STATUS} &&
@@ -129,8 +132,10 @@ my $err = WIFFI_Collector_Set($h, 'Collector', 'reopen');
 like($err, qr/Address already in use/, 'manual reopen returns bind error');
 is(scalar @logs, $prior + 1, 'repeated bind failures are each logged');
 $blocked_port{9195} = 0;
+$h->{CLIENTS_TIMEOUT} = 3; # prior closed clients, retained through reopen
 is(WIFFI_Collector_Set($h, 'Collector', 'reopen'), undef,
    'manual reopen recovers without restart');
+is($h->{CLIENTS_TIMEOUT}, 3, 'manual reopen retains timeout statistics');
 is($h->{LISTENER_STATUS}, 'listening', 'recovery sets listener status');
 is($h->{LISTENER_ERROR}, '', 'recovery clears the previous bind error');
 ok(exists $selectlist{'Collector.9195'}, 'manual recovery registers one socket');
@@ -152,6 +157,8 @@ ok(!exists $defs{client_1} && !exists $defs{client_2},
 ok(!exists $selectlist{client_1} && !exists $selectlist{client_2},
    'reopen frees child selectlist entries');
 is($h->{CLIENTS_ACTIVE}, 0, 'active client INTERNAL drops to zero');
+is($h->{CLIENTS_TIMEOUT}, 3,
+   'reopen of listening collector retains historical timeouts');
 is(scalar @closed, $before + 3, 'two clients and old listener closed');
 ok(exists $selectlist{'Collector.9195'}, 'new listener is registered');
 ok(!exists $h->{READINGS}{LISTENER_STATUS},
@@ -180,6 +187,8 @@ ok(!exists $defs{client_during_modify},
 is($h->{PORT}, 9295, 'actual TCP port changed');
 is($h->{LISTENER_STATUS}, 'listening', 'modified listener reports listening');
 is($h->{CLIENTS_ACTIVE}, 0, 'client count reset on modify');
+is($h->{CLIENTS_TIMEOUT}, 0,
+   'modify/redefinition resets timeout counter with other diagnostics');
 is($h->{TCP_PORT}, 9295, 'configured port INTERNAL updated');
 ok((grep { /listener closed \(modify\)/ } @logs),
    'listener close during modify is logged');
@@ -268,5 +277,6 @@ delete $defs{CollectorRenamed};
 $h = open_collector(9195);
 ok(exists $selectlist{'Collector.9195'},
    'fresh definition recreates a clean listener after shutdown');
+is($h->{CLIENTS_TIMEOUT}, 0, 'new definition starts with zero timeouts');
 
 done_testing();
