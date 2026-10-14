@@ -9,7 +9,7 @@ use JSON::PP ();
 # and emits a synchronous DEFINED notification after successful definition.
 # Unlike a live FHEM process this does NOT test the actual event loop,
 # database logging, socket lifetime, or other global notify side effects.
-our (%defs, %attr);
+our (%defs, %attr, $init_done);
 my ($definitions, $on_define, $on_attr, $forced_error);
 my @logs;
 sub AttrVal {
@@ -722,5 +722,35 @@ ok($pinned, 'autocreate works with two collectors defined');
 is($pinned->{IODev},$server, 'new device IODev is receiving collector');
 is($attr{$pinned->{NAME}}{IODev},'Collector','source IODev persisted');
 is($pinned->{DEF},'02:00:00:00:00:0F','saved device DEF contains MAC only');
+
+# Interactive autocreate uses the same persistent IODev path as a
+# manual definition, before the DEFINED event is sent.
+$init_done = 1;
+$server = start_case();
+$attr{Collector}{autocreate} = 1;
+$on_define = sub {
+  my ($name) = @_;
+  is($attr{$name}{IODev}, 'Collector',
+    'IODev is already a real attribute when DEFINED fires');
+  is($defs{$name}{DEF}, '02:00:00:00:00:01',
+    'interactive autocreate already normalized DEF to MAC-only');
+};
+WIFFI_Collector_ProcessFrame($server, $raw, '192.0.2.21');
+is($server->{AUTOCREATED}, 1,
+  'runtime autocreate with persisted IODev succeeds');
+is($server->{FRAMES_OK}, 1,
+  'runtime autocreate publishes first telegram');
+
+# A synchronous ATTR callback can remove an attribute while Define runs:
+# the device must not be accepted with an unpersisted IODev.
+$server = start_case();
+$attr{Collector}{autocreate} = 1;
+$on_attr = sub { delete $attr{$_[0]}{IODev} if $_[1] eq 'IODev' };
+WIFFI_Collector_ProcessFrame($server, $raw, '192.0.2.21');
+is($server->{AUTOCREATED}, 0,
+  'runtime autocreate rejects missing persisted IODev');
+ok(!$defs{WIFFI_020000000001},
+  'failed runtime define does not leave a half-configured logical device');
+$init_done = 0;
 
 done_testing();
