@@ -10,14 +10,15 @@ use lib 't/lib';
 our (%defs, %attr, %selectlist, $init_done, $readingFnAttributes);
 $init_done = 1;
 $readingFnAttributes = '';
-my (%blocked_port, @logs, @timers, @closed, @opened, @deleted);
+my (%blocked_port, %refused_delete, %refused_after_undef,
+    @logs, @log_levels, @timers, @closed, @opened, @deleted);
 
 sub readingsSingleUpdate {}
 sub AttrVal {
   my ($name, $key, $default) = @_;
   return exists $attr{$name}{$key} ? $attr{$name}{$key} : $default;
 }
-sub Log3 { push @logs, $_[2] }
+sub Log3 { push @logs, $_[2]; push @log_levels, $_[1] }
 sub InternalTimer {
   my ($at, $fn, $hash, $repeat) = @_;
   push @timers, [$at, $fn, $hash];
@@ -53,11 +54,17 @@ sub TcpServer_Close {
   push @closed, $hash->{NAME};
   return undef;
 }
+# FHEM CommandDelete aborts if UndefFn or DeleteFn returns an error.
 sub CommandDelete {
   my ($cl, $name) = @_;
   my $hash = $defs{$name};
   return "not defined: $name" unless $hash;
-  WIFFI_Collector_Undef($hash);
+  return $refused_delete{$name} if $refused_delete{$name};
+  my $error = WIFFI_Collector_Undef($hash);
+  return $error if $error;
+  # Mimic a DeleteFn error after UndefFn already closed the socket.
+  return $refused_after_undef{$name} if $refused_after_undef{$name};
+  delete $selectlist{$name};
   delete $defs{$name};
   push @deleted, $name;
   return undef;
@@ -66,8 +73,9 @@ sub CommandDelete {
 require './FHEM/00_WIFFI_Collector.pm';
 
 sub reset_case {
-  (%defs, %attr, %selectlist, %blocked_port) = ();
-  (@logs, @timers, @closed, @opened, @deleted) = ();
+  (%defs, %attr, %selectlist, %blocked_port, %refused_delete,
+   %refused_after_undef) = ();
+  (@logs, @log_levels, @timers, @closed, @opened, @deleted) = ();
   $init_done = 1;
   my $hash = { NAME => 'Collector', TYPE => 'WIFFI_Collector' };
   $defs{Collector} = $hash;
@@ -278,5 +286,112 @@ $h = open_collector(9195);
 ok(exists $selectlist{'Collector.9195'},
    'fresh definition recreates a clean listener after shutdown');
 is($h->{CLIENTS_TIMEOUT}, 0, 'new definition starts with zero timeouts');
+
+# Rejected client deletion must never advertise a successful listener
+# recovery or hide still-connected TCP children.
+$h = open_collector(9195);
+$h->{CLIENTS_TIMEOUT} = 2;
+my $stuck = fake_client('client_stuck', 'Collector');
+$h->{CLIENTS_ACTIVE} = 1;
+$refused_delete{client_stuck} = 'synthetic UndefFn refused deletion';
+my $previous_opens = scalar @opened;
+my $old_logs = scalar @logs;
+my $failure = WIFFI_Collector_Set($h, 'Collector', 'reopen');
+like($failure, qr/client_stuck/, 'set reopen returns refused cleanup as an error');
+is($h->{LISTENER_STATUS}, 'error', 'failed cleanup leaves listener in error');
+like($h->{LISTENER_ERROR}, qr/client_stuck/, 'cleanup reason exposed via INTERNAL');
+is($h->{CLIENTS_ACTIVE}, 1, 'live child remains counted after failed deletion');
+is($h->{CLIENTS_TIMEOUT}, 2, 'cleanup error preserves timeout history');
+ok(exists $defs{client_stuck} && $defs{client_stuck} == $stuck,
+  'refused temporary client is retained by FHEM');
+ok(exists $selectlist{client_stuck}, 'refused client remains select registered');
+ok(!exists $selectlist{'Collector.9195'}, 'old listener socket closed on failure');
+ok(!exists $h->{SERVERSOCKET}, 'failed cleanup leaves no listener socket');
+is(scalar @opened, $previous_opens, 'failure does not open a replacement listener');
+is($log_levels[-2], 1, 'refusal logged at level 1');
+like(join(' ', @logs[$old_logs .. $#logs]), qr/client_stuck.*manual reopen.*synthetic UndefFn refused deletion/,
+  'log contains client, attempted action and underlying failure');
+$old_logs = scalar @logs;
+like(WIFFI_Collector_Set($h, 'Collector', 'reopen'), qr/client_stuck/,
+  'repeated failure again prevents reopen');
+like(join(' ', @logs[$old_logs .. $#logs]), qr/client_stuck.*synthetic UndefFn/,
+  'repeated failure logged individually, without rate limiting');
+delete $refused_delete{client_stuck};
+is(WIFFI_Collector_Set($h, 'Collector', 'reopen'), undef,
+  'manual reopen recovers once child becomes deletable');
+is($h->{LISTENER_STATUS}, 'listening', 'successful recovery restores listener');
+is($h->{LISTENER_ERROR}, '', 'successful recovery clears cleanup error');
+is($h->{CLIENTS_ACTIVE}, 0, 'successful retry frees the temporary client');
+ok(!exists $defs{client_stuck} && !exists $selectlist{client_stuck},
+  'successful recovery eliminates stale client and selection');
+ok(exists $selectlist{'Collector.9195'}, 'one listener registered after recovery');
+
+# CommandModify restores DEF on error. Its module callback must not install
+# a newly configured port, reset statistics or return false success.
+$h = open_collector(9195);
+my $during_modify = fake_client('client_modify_failed','Collector');
+$h->{CLIENTS_ACTIVE} = 1;
+$h->{CLIENTS_TIMEOUT} = 4;
+$h->{FRAMES_OK} = 7;
+$refused_delete{client_modify_failed} = 'synthetic temporary client refusal';
+$h->{OLDDEF} = '9195';
+$failure = WIFFI_Collector_Define($h, 'Collector WIFFI_Collector 9295');
+delete $h->{OLDDEF};
+like($failure, qr/client_modify_failed/, 'modify aborts on client cleanup failure');
+is($h->{TCP_PORT}, 9195, 'failed modify keeps original configured TCP port');
+is($h->{FRAMES_OK}, 7, 'failed modify does not reset frame counters');
+is($h->{CLIENTS_TIMEOUT}, 4, 'failed modify preserves timeout diagnostics');
+is($h->{CLIENTS_ACTIVE}, 1, 'failed modify shows remaining connected child');
+is($h->{LISTENER_STATUS}, 'error', 'failed modify exposes listener error');
+ok(!exists $selectlist{'Collector.9195'} &&
+   !exists $selectlist{'Collector.9295'}, 'failed modify leaves listener stopped');
+delete $refused_delete{client_modify_failed};
+is(WIFFI_Collector_Set($h, 'Collector', 'reopen'),undef,
+  'recover failed modify manually at old configured port');
+ok(exists $selectlist{'Collector.9195'} && !exists $selectlist{'Collector.9295'},
+  'failed modify never silently activates the new port');
+is($h->{CLIENTS_ACTIVE}, 0, 'manual recovery releases failed-modify client');
+
+# CommandDelete normally keeps the Collector defined if UndefFn reports an
+# error; a retry after the refusal is removed must finish removing it.
+$h = open_collector(9195);
+my $during_undef = fake_client('client_undef_failed','Collector');
+$h->{CLIENTS_ACTIVE} = 1;
+$refused_delete{client_undef_failed} = 'synthetic refusal during undef';
+$failure = CommandDelete(undef, 'Collector');
+like($failure, qr/client_undef_failed/, 'server undef propagates cleanup error');
+ok($defs{Collector} && $defs{Collector} == $h,
+  'FHEM retains collector definition after failed undef');
+ok(exists $defs{client_undef_failed}, 'failed child persists until retried');
+is($h->{CLIENTS_ACTIVE}, 1, 'server failed undef retains accurate child count');
+is($h->{LISTENER_STATUS}, 'error', 'failed undef reports listener error');
+ok(!exists $selectlist{'Collector.9195'}, 'failed undef shuts down old listener');
+delete $refused_delete{client_undef_failed};
+is(CommandDelete(undef,'Collector'), undef,
+  'retrying delete removes collector and previously stuck client');
+ok(!exists $defs{Collector} && !exists $defs{client_undef_failed},
+  'collector and child are absent following successful retry');
+ok(!exists $selectlist{client_undef_failed},
+  'retry deletes last stale child selection');
+is($h->{CLIENTS_ACTIVE}, 0, 'successful undef retry clears active count');
+
+# A child UndefFn can already close its socket before its DeleteFn refuses
+# deletion. Retain error state without falsely counting a live socket.
+$h = open_collector(9195);
+my $ghost = fake_client('client_partial_cleanup','Collector');
+$h->{CLIENTS_ACTIVE} = 1;
+$refused_after_undef{client_partial_cleanup} = 'synthetic DeleteFn refused deletion';
+$failure = WIFFI_Collector_Set($h,'Collector','reopen');
+like($failure, qr/client_partial_cleanup/, 'post-Undef DeleteFn error blocks reopen');
+ok(exists $defs{client_partial_cleanup}, 'partially deleted child remains in defs');
+ok(!defined $ghost->{CD}, 'FHEM UndefFn has already closed child socket');
+is($h->{CLIENTS_ACTIVE}, 0, 'closed orphan is not counted as a live connection');
+is($h->{LISTENER_STATUS}, 'error', 'orphaned child still blocks listener reopen');
+ok(!exists $selectlist{'Collector.9195'}, 'no new listener with orphaned child');
+delete $refused_after_undef{client_partial_cleanup};
+is(WIFFI_Collector_Set($h,'Collector','reopen'), undef,
+  'manual retry cleans ghost device and reopens listener');
+ok(!exists $defs{client_partial_cleanup}, 'ghost child removed on retry');
+ok(exists $selectlist{'Collector.9195'}, 'single listener available after retry');
 
 done_testing();
