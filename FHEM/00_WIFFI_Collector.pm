@@ -153,6 +153,9 @@ sub WIFFI_Collector_Initialize {
 sub WIFFI_Collector_CloseListener {
   my ($hash, $reason) = @_;
   my $name = $hash->{NAME};
+  # Invalidate any Read() currently processing a batch of TCP frames.
+  # A rename must not change this generation; reopen/modify/delete do.
+  ++$hash->{'.WIFFI_LISTENER_GEN'};
   RemoveInternalTimer($hash); # also cancels a deferred initial bind
 
   # Temporary children must be deleted while the parent is still defined,
@@ -325,8 +328,22 @@ sub WIFFI_Collector_Undef {
   return undef;
 }
 
+# Reentrant FHEM notify/DOIF callbacks may delete, rename, modify or reopen
+# devices from inside readingsEndUpdate(). Check hash ownership rather than
+# relying on names or file descriptors (which the OS can reuse).
+sub WIFFI_Collector_ClientCurrent {
+  my ($client, $server, $generation) = @_;
+  return defined $client->{CD}
+    && defined $server->{SERVERSOCKET}
+    && $defs{$client->{NAME}} && $defs{$client->{NAME}} == $client
+    && $defs{$server->{NAME}} && $defs{$server->{NAME}} == $server
+    && ($client->{SNAME} // '') eq $server->{NAME}
+    && ($server->{'.WIFFI_LISTENER_GEN'} // 0) == $generation;
+}
+
 sub WIFFI_Collector_Read {
   my ($hash) = @_;
+  return if !$defs{$hash->{NAME}} || $defs{$hash->{NAME}} != $hash;
   if ($hash->{SERVERSOCKET}) {
     my $client = TcpServer_Accept($hash, 'WIFFI_Collector');
     return unless $client;
@@ -350,10 +367,12 @@ sub WIFFI_Collector_Read {
     return;
   }
   my $server = $defs{$hash->{SNAME}};
-  unless ($server) {
+  unless ($server && $server->{TYPE} eq 'WIFFI_Collector') {
     CommandDelete(undef, $hash->{NAME});
     return;
   }
+  my $generation = $server->{'.WIFFI_LISTENER_GEN'} // 0;
+  return unless WIFFI_Collector_ClientCurrent($hash, $server, $generation);
   my $chunk = '';
   my $n = sysread($hash->{CD}, $chunk, 8192);
   if (!defined $n) {
@@ -366,9 +385,10 @@ sub WIFFI_Collector_Read {
     my $tail = $hash->{BUF} // '';
     # Some classic WIFFI firmware closes its TCP socket instead of sending
     # ETX/EOT. EOF is a complete boundary, not permission for partial JSON.
-    WIFFI_Collector_ProcessFrame($server, $tail, $hash->{PEER})
+    WIFFI_Collector_ProcessFrame($server, $tail, $hash->{PEER}, $hash, $generation)
       if $tail =~ /\S/;
-    CommandDelete(undef, $hash->{NAME});
+    CommandDelete(undef, $hash->{NAME})
+      if $defs{$hash->{NAME}} && $defs{$hash->{NAME}} == $hash;
     return;
   }
 
@@ -377,16 +397,33 @@ sub WIFFI_Collector_Read {
   my $max_frame = $server->{MAX_FRAME} // 262144;
   # First extract ALL complete frames. Their combined size is not limited by
   # MAX_FRAME; only an individual complete frame or the unfinished tail is.
-  for my $frame (WIFFI_Collector_ExtractFrames(\$hash->{BUF})) {
+  my @frames = WIFFI_Collector_ExtractFrames(\$hash->{BUF});
+  for my $frame (@frames) {
+    last unless WIFFI_Collector_ClientCurrent($hash, $server, $generation);
+    my $keep_connection = 1;
     if (length($frame) > $max_frame) {
       ++$server->{FRAMES_ERROR};
       WIFFI_Collector_LogRejected($server, $hash->{PEER},
         "oversized WIFFI frame (".length($frame)." bytes, max $max_frame)",
         $frame);
-      next;
+    } else {
+      $keep_connection = WIFFI_Collector_ProcessFrame(
+        $server, $frame, $hash->{PEER}, $hash, $generation);
     }
-    WIFFI_Collector_ProcessFrame($server, $frame, $hash->{PEER});
+    if (!$keep_connection) {
+      # A device was deleted/redefined during its Reading event. Drop any
+      # pending frames on this connection instead of delivering stale data.
+      CommandDelete(undef, $hash->{NAME})
+        if WIFFI_Collector_ClientCurrent($hash, $server, $generation);
+    }
+    if (!$keep_connection
+        || !WIFFI_Collector_ClientCurrent($hash, $server, $generation)) {
+      Log3($server, 3, "$server->{NAME}: TCP frame batch stopped after ".
+        "reentrant FHEM device or listener change ($hash->{PEER})");
+      return;
+    }
   }
+  return unless WIFFI_Collector_ClientCurrent($hash, $server, $generation);
   if (length($hash->{BUF}) > $max_frame) {
     ++$server->{FRAMES_ERROR};
     WIFFI_Collector_LogRejected($server, $hash->{PEER},
@@ -397,14 +434,14 @@ sub WIFFI_Collector_Read {
 }
 
 sub WIFFI_Collector_ProcessFrame {
-  my ($server, $raw, $peer) = @_;
+  my ($server, $raw, $peer, $client, $generation) = @_;
   my $packet = eval { WIFFI_Collector_Decode($raw) };
   if (!$packet) {
     $server->{FRAMES_ERROR}++;
     my $error = $@ || 'unknown JSON error';
     chomp $error;
     WIFFI_Collector_LogRejected($server, $peer, $error, $raw);
-    return;
+    return 1;
   }
 
   # Match existing logical devices by the complete normalized MAC.  Never
@@ -425,7 +462,7 @@ sub WIFFI_Collector_ProcessFrame {
     $server->{FRAMES_ERROR}++;
     WIFFI_Collector_LogRejected($server, $peer,
       'WIFFI identity conflict', $raw);
-    return;
+    return 1;
   }
   my $device = $matches[0];
   if ($device && defined $device->{PEER} && $device->{PEER} ne $peer) {
@@ -433,7 +470,7 @@ sub WIFFI_Collector_ProcessFrame {
     WIFFI_Collector_LogRejected($server, $peer,
       "WIFFI MAC changed sender IP: ".
       "$device->{NAME} ($device->{PEER} -> $peer); check device identity", $raw);
-    return;
+    return 1;
   }
 
   # Stable, unambiguous default names.  Using the full MAC also makes the
@@ -447,6 +484,8 @@ sub WIFFI_Collector_ProcessFrame {
     } else {
       my $error = CommandDefine(undef,
         "$name WIFFI_DEVICE $server->{NAME} $packet->{mac}");
+      return 0 if $client
+        && !WIFFI_Collector_ClientCurrent($client, $server, $generation);
       if ($error) {
         Log3($server, 2, "$server->{NAME}: autocreate failed: $error");
       } else {
@@ -473,6 +512,8 @@ sub WIFFI_Collector_ProcessFrame {
             my ($key, $value) = @$default;
             next if defined AttrVal($name, $key, undef);
             my $attr_error = CommandAttr(undef, "$name $key $value");
+            return 0 if $client
+              && !WIFFI_Collector_ClientCurrent($client, $server, $generation);
             Log3($server, 2, "$server->{NAME}: default attr $key failed: $attr_error")
               if $attr_error;
             # ATTR notifications may remove or rename the new device.
@@ -498,7 +539,7 @@ sub WIFFI_Collector_ProcessFrame {
   if (!$device) {
     $server->{FRAMES_UNKNOWN}++;
     Log3($server, 4, "$server->{NAME}: unknown WIFFI $packet->{mac} ($peer)");
-    return;
+    return 1;
   }
 
   if ($packet->{reported_ip} && $peer ne $packet->{reported_ip}) {
@@ -507,12 +548,21 @@ sub WIFFI_Collector_ProcessFrame {
   }
   # WIFFI_DEVICE_Process stores the peer and module identity before
   # publishing readings, which may trigger reentrant FHEM callbacks.
+  my $device_revision = $device->{'.WIFFI_DEFINITION_GEN'} // 0;
   if (!WIFFI_DEVICE_Process($device, $packet, $peer)) {
     $server->{FRAMES_ERROR}++;
     WIFFI_Collector_LogRejected($server, $peer,
       "reading mapping rejected by $device->{NAME}", $raw);
-    return;
+    return 1;
   }
-  $server->{FRAMES_OK}++;
+  # A rename retains the same hash and remains valid. A deleted/recreated
+  # device or an explicit modify invalidates the frame's logical target.
+  return 0 unless $defs{$device->{NAME}}
+    && $defs{$device->{NAME}} == $device
+    && ($device->{'.WIFFI_DEFINITION_GEN'} // 0) == $device_revision
+    && ($device->{COLLECTOR} // '') eq $server->{NAME};
+  ++$server->{FRAMES_OK}
+    if $defs{$server->{NAME}} && $defs{$server->{NAME}} == $server;
+  return 1;
 }
 1;
