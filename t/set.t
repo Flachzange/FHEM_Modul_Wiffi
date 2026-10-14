@@ -45,13 +45,14 @@ is($module{SetFn}, 'WIFFI_DEVICE_Set', 'SetFn registered on logical devices');
 is($module{AttrFn}, 'WIFFI_DEVICE_Attr', 'AttrFn registered on logical devices');
 is($module{FW_detailFn}, 'WIFFI_DEVICE_FwDetail', 'FHEMWEB detail hook registered');
 is($module{FW_deviceOverview}, 1, 'standard FHEM device overview is preserved');
-is($module{FW_addDetailToSummary}, 1, 'webinterface link is also shown in room overview');
+ok(!defined $module{FW_addDetailToSummary},
+  'FHEMWEB does not add a separate link row in room overview');
 like($module{AttrList}, qr/disable:0,1/, 'device offers disable attribute');
 
 my $device = init();
 is(WIFFI_DEVICE_FwDetail(undef,'Pump',undef,undef),
-  '<a href="http://192.0.2.21/" target="_blank" rel="noopener noreferrer">WIFFI Webinterface</a>',
-  'FHEMWEB exposes device-bound webinterface link from validated TCP peer');
+  '<a href="http://192.0.2.21/" target="_blank" rel="noopener noreferrer">WIFFI Webinterface</a><br>',
+  'device detail link has one extra line break before FHEMWEB set controls');
 delete $device->{PEER};
 ok(!defined WIFFI_DEVICE_FwDetail(undef,'Pump',undef,undef),
   'no webinterface link before a peer is learned');
