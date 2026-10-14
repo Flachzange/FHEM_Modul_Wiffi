@@ -354,6 +354,10 @@ sub WIFFI_DEVICE_Process {
 <a id="WIFFI_DEVICE-readings"></a>
 <h4>Readings and display</h4>
 <ul>
+  <li><code>FVERSION</code> is the installed FHEM module version.
+      <code>LAST_TELEGRAM</code> is the local time of the last successfully
+      mapped WIFFI telegram for this enabled device, even if measured
+      values are unchanged. Both are INTERNALS, not Readings/events.</li>
   <li>Sensor readings use the sender's <code>homematic_name</code>;
       <code>Systeminfo_sec_seit_reset</code> is available as a heartbeat.
       A valid telegram updates <code>state</code> to <code>online</code>.</li>
@@ -490,6 +494,11 @@ sub WIFFI_DEVICE_Process {
 <a id="WIFFI_DEVICE-readings"></a>
 <h4>Readings und Anzeige</h4>
 <ul>
+  <li><code>FVERSION</code> zeigt die Version des installierten
+      FHEM-Moduls. <code>LAST_TELEGRAM</code> ist die lokale
+      Empfangszeit des letzten erfolgreich zugeordneten Telegramms
+      dieses aktiven Ger&auml;ts, auch bei unver&auml;nderten Messwerten.
+      Beides sind INTERNALS, keine Readings oder Events.</li>
   <li>Sensor-Readings stammen aus <code>homematic_name</code>;
       <code>Systeminfo_sec_seit_reset</code> kann als Lebenszeichen
       verwendet werden. Ein g&uuml;ltiges Telegramm setzt
