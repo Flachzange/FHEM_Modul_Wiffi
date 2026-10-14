@@ -301,16 +301,21 @@ sub WIFFI_DEVICE_Process {
 <a id="WIFFI_DEVICE-define"></a>
 <h4>Define</h4>
 <ul>
-  <li><code>define &lt;name&gt; WIFFI_DEVICE &lt;collector-name&gt; &lt;MAC-address&gt;</code><br>
-      Define a logical WIFFI sender by its collector and MAC address.
-      The MAC address may use six hexadecimal octets with colons or
-      exactly 12 hexadecimal digits without separators (case-insensitive).
-      Both are stored in uppercase colon-separated form.
-      Examples (alternatives):
-      <code>define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 02:00:00:00:00:01</code>
-      or <code>define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 020000000001</code>.
-      The collector can also create logical devices automatically when
-      its <code>autocreate</code> attribute is enabled.</li>
+  <li><code>define &lt;name&gt; WIFFI_DEVICE &lt;MAC-address&gt;</code><br>
+      Identify the WIFFI sender by MAC address (six colon-separated
+      hex octets, or exactly 12 hex digits without separators).
+      Example:
+      <code>define WIFFI_PUMP2 WIFFI_DEVICE 02:00:00:00:00:01</code>.
+      With a single collector, FHEM can assign IODev automatically;
+      with several collectors, set <code>attr &lt;name&gt; IODev &lt;collector&gt;</code>
+      explicitly. Newly autocreated devices always receive an explicit
+      IODev attribute for the source collector.</li>
+  <li>Existing definitions using
+      <code>define &lt;name&gt; WIFFI_DEVICE &lt;collector&gt; &lt;MAC&gt;</code>
+      remain supported for compatibility. To migrate without recreating
+      the device: first set <code>attr &lt;name&gt; IODev &lt;collector&gt;</code>,
+      then <code>modify &lt;name&gt; &lt;MAC&gt;</code> and save your
+      FHEM configuration.</li>
 </ul>
 <a id="WIFFI_DEVICE-set"></a>
 <h4>Set</h4>
@@ -380,6 +385,11 @@ sub WIFFI_DEVICE_Process {
 </p>
 <h4>Attributes</h4>
 <ul>
+  <li><a id="WIFFI_DEVICE-attr-IODev"></a><b>IODev</b><br>
+      Selects the WIFFI_Collector that receives this device's telegrams.
+      Changing or deleting the binding clears the previously learned
+      sender peer and cancels pending HTTP requests. FHEM also exposes
+      an IODev reading as part of its standard IO association.</li>
   <li><a id="WIFFI_DEVICE-attr-stripReadingPrefix"></a><b>stripReadingPrefix</b> (0,1; default 0)<br>
       When 1, remove one leading <code>w_</code> from each
       <code>homematic_name</code> sensor reading. Other reading names
@@ -430,17 +440,21 @@ sub WIFFI_DEVICE_Process {
 <a id="WIFFI_DEVICE-define"></a>
 <h4>Define</h4>
 <ul>
-  <li><code>define &lt;name&gt; WIFFI_DEVICE &lt;collector-name&gt; &lt;MAC-Adresse&gt;</code><br>
-      Erstellt ein logisches Ger&auml;t mit Collector und MAC-Adresse.
-      Die MAC-Adresse kann aus sechs Hex-Oktetten mit Doppelpunkten
-      oder aus genau zw&ouml;lf Hex-Zeichen ohne Trennzeichen bestehen
-      (Gro&szlig;-/Kleinschreibung beliebig). Intern wird immer die
-      gro&szlig;geschriebene Form mit Doppelpunkten verwendet.
-      Beispiele (Alternativen):
-      <code>define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 02:00:00:00:00:01</code>
-      oder <code>define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 020000000001</code>.
-      Bei aktiviertem <code>autocreate</code> kann der Collector
-      neue Ger&auml;te auch selbst anlegen.</li>
+  <li><code>define &lt;name&gt; WIFFI_DEVICE &lt;MAC-Adresse&gt;</code><br>
+      Identifiziert das WIFFI-Ger&auml;t anhand seiner MAC-Adresse
+      (sechs Hex-Oktette mit Doppelpunkten oder zw&ouml;lf Hex-Zeichen
+      ohne Trennzeichen). Beispiel:
+      <code>define WIFFI_PUMP2 WIFFI_DEVICE 02:00:00:00:00:01</code>.
+      Bei einem einzigen Collector kann FHEM IODev automatisch zuweisen.
+      Bei mehreren Collectors <code>attr &lt;name&gt; IODev &lt;collector&gt;</code>
+      explizit setzen. Beim Autocreate wird das IODev-Attribut
+      immer auf den empfangenden Collector gesetzt.</li>
+  <li>Alte Definitionen der Form
+      <code>define &lt;name&gt; WIFFI_DEVICE &lt;collector&gt; &lt;MAC&gt;</code>
+      bleiben kompatibel. Umstellung ohne Neuanlage:
+      zuerst <code>attr &lt;name&gt; IODev &lt;collector&gt;</code>,
+      dann <code>modify &lt;name&gt; &lt;MAC&gt;</code> und
+      die FHEM-Konfiguration speichern.</li>
 </ul>
 <a id="WIFFI_DEVICE-set"></a>
 <h4>Set</h4>
@@ -517,6 +531,11 @@ sub WIFFI_DEVICE_Process {
 </p>
 <h4>Attribute</h4>
 <ul>
+  <li><a id="WIFFI_DEVICE-attr-IODev"></a><b>IODev</b><br>
+      Ordnet das Ger&auml;t dem empfangenden WIFFI_Collector zu.
+      Beim Wechsel oder L&ouml;schen werden die bisherige
+      TCP-Absenderadresse verworfen und offene HTTP-Anfragen beendet.
+      FHEM erzeugt bei der Zuordnung auch sein normales IODev-Reading.</li>
   <li><a id="WIFFI_DEVICE-attr-stripReadingPrefix"></a><b>stripReadingPrefix</b> (0,1; Standard 0)<br>
       Entfernt bei 1 genau ein f&uuml;hrendes <code>w_</code>
       aus jedem Sensor-Reading-Namen (<code>homematic_name</code>).
