@@ -29,6 +29,9 @@ sub WIFFI_DEVICE_Define {
   }
   my $normalized = WIFFI_Collector_NormalizeMac($mac);
   return 'Invalid WIFFI MAC address' unless $normalized;
+  # A successful modify invalidates any in-flight frame targeting the
+  # previous definition; plain rename keeps the same definition generation.
+  ++$hash->{'.WIFFI_DEFINITION_GEN'} if exists $hash->{OLDDEF};
   $hash->{COLLECTOR} = $collector;
   $hash->{MAC} = $normalized;
   # Explicit `modify` acknowledges that the device's TCP peer can change.
