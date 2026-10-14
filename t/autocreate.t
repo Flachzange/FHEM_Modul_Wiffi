@@ -17,6 +17,7 @@ sub AttrVal {
   return exists $attr{$name}{$key} ? $attr{$name}{$key} : $fallback;
 }
 sub Log3 { push @logs, $_[2] }
+sub TimeNow { return '2026-10-14 15:00:00' }
 sub readingsSingleUpdate {
   my ($hash, $key, $value) = @_;
   $hash->{READINGS}{$key}{VAL} = "$value";
