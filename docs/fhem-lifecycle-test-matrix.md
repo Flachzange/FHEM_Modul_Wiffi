@@ -2,7 +2,7 @@
 
 **Issue:** [#4](https://github.com/Flachzange/FHEM_Modul_Wiffi/issues/4)  
 **Implementation branch:** `feat/tcp-collector-initial`  
-**Status (2026-10-14):** latest branch CI passes (11 test files / 1063 tests, including metadata, telegram-INTERNAL and native IODev binding regression checks); this is still an isolated test suite, not a live-FHEM validation of FVERSION. Real-FHEM telemetry, `reopen`, regular restart with configDB restore and `disable`/`enable` of both module types have been confirmed. **Maintainer decision: the remaining comprehensive L01–L18/D01–D08 staging/failure-injection tests will not be performed.** Historical unexecuted rows remain marked *Not run*, not *PASS*. This matrix is a record of verified behavior and consciously unverified scenarios, **not a pending test plan**. Investigate these paths only if a concrete defect is observed later.
+**Status (2026-10-14):** latest branch CI passes (11 test files / 1067 tests, including metadata, telegram-INTERNAL and native IODev binding regression checks); this is still an isolated test suite, not a live-FHEM validation of FVERSION. Real-FHEM telemetry, `reopen`, regular restart with configDB restore and `disable`/`enable` of both module types have been confirmed. **Maintainer decision: the remaining comprehensive L01–L18/D01–D08 staging/failure-injection tests will not be performed.** Historical unexecuted rows remain marked *Not run*, not *PASS*. This matrix is a record of verified behavior and consciously unverified scenarios, **not a pending test plan**. Investigate these paths only if a concrete defect is observed later.
 
 ## Inspected reference behavior
 
