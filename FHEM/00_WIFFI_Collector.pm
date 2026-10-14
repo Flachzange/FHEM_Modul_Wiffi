@@ -264,6 +264,10 @@ sub WIFFI_Collector_Define {
     unless @parts == 3 && $port =~ /\A[0-9]{1,5}\z/
       && $port >= 1 && $port <= 65535;
   return $@ unless FHEM::Meta::SetInternals($hash);
+  # FHEM::Meta does not synthesize x_version for non-SVN modules with
+  # an explicit META.json version. Keep its standard FVERSION INTERNAL.
+  $hash->{FVERSION} //= '00_WIFFI_Collector.pm:' .
+    version->parse(FHEM::Meta::Get($hash, 'version'))->normal;
 
   # FHEM invokes DefFn on modify with OLDDEF set, reusing the same hash.
   # Reject invalid port arguments BEFORE tearing down a healthy listener.
