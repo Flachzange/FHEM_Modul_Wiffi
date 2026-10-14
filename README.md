@@ -34,6 +34,25 @@ attr WIFFI_Collector logRejectedPayload 1
 
 Each rejected frame is logged individually at FHEM log level 2. The opt-in entry includes the original payload (normal telegrams in full, capped at 16 KiB with a `truncated` marker for unusually large data); CR/LF and control bytes are escaped so there is one logical log record per frame. `FRAMES_ERROR` still counts every rejection. Successfully parsed telemetry including `value: null` is **not** logged as an error. Identifiers such as local IP addresses and MACs, and user-defined field values, may be present in the log: enable this on installations where log access and retention are appropriate. This attribute affects only error logging; it does not emit new FHEM readings or DbLog events.
 
+### TCP connection limits and INTERNALS
+
+The shared TCP receiver stays nonblocking and uses FHEM `TcpServer_Accept` / `TcpServer_Close` and temporary `WIFFI_Collector` client devices. There is no periodic polling. Per-client timeout callbacks use FHEM `InternalTimer`, and are removed on disconnect. Limits are currently fixed (not user attributes):
+
+| INTERNAL | Meaning |
+| --- | --- |
+| `CLIENTS_ACTIVE` | Currently accepted, open WIFFI TCP clients (usually 0 between short-lived WIFFI sends) |
+| `CLIENTS_PEAK` | Maximum concurrent active clients since the collector was defined |
+| `CLIENTS_REJECTED` | Clients disconnected immediately because the active-client limit was reached |
+| `MAX_CLIENTS` | 16 concurrent active WIFFI TCP clients |
+| `CLIENT_IDLE_TIMEOUT` | 60 seconds since the client's last received TCP data |
+| `CLIENT_MAX_LIFETIME` | 180 seconds since accepting the client (absolute upper bound) |
+| `MAX_FRAME` | 262144 bytes per **individual** ETX/EOT-delimited frame or unfinished tail, not the total size of coalesced complete frames |
+| `CONNECTS` | FHEM `TcpServer_Accept` connection count; includes connections subsequently rejected by the collector limit |
+
+A complete frame larger than `MAX_FRAME` is rejected and counted as `FRAMES_ERROR`; if a following complete frame is valid, it is still processed. A growing unfinished frame larger than `MAX_FRAME` closes only that temporary TCP client. A client that is idle or exceeds its absolute lifetime is closed through FHEM's delete/undefine path and counted as `FRAMES_ERROR`. A connection that closes with a complete JSON object but no ETX/EOT is accepted on EOF for firmware compatibility; an incomplete JSON EOF tail is rejected. Each failure is logged, with optional full-payload logging controlled by `logRejectedPayload`.
+
+`CLIENTS_ACTIVE`, `CLIENTS_PEAK`, `CLIENTS_REJECTED`, `MAX_CLIENTS`, `CLIENT_IDLE_TIMEOUT`, and `CLIENT_MAX_LIFETIME` are **INTERNALS**, not Readings. No new events, DbLog rows, or polling are generated for statistics. Counters reset on collector definition/redefinition and are not persisted as historical totals. The isolated transport tests cover client-count changes, frame boundaries and timeouts, but cleanup in a **real FHEM process**, including `%selectlist` and socket ownership across shutdown/reload/modify, still needs the live integration matrix in issues #3 and #4.
+
 ### Automatic device discovery
 
 Enable `autocreate` explicitly with `attr WIFFI_Collector autocreate 1` after restricting `allowfrom` to trusted sources. Each first valid telegram from an unknown normalized MAC then creates a persistent FHEM `WIFFI_DEVICE`. No separate `define` commands are needed for each WIFFI.
