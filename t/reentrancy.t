@@ -182,8 +182,8 @@ ok(!exists $defs{$client->{NAME}},'old accepted client removed on reopen');
 is($server->{CLIENTS_ACTIVE},0,'no old client counted after reopen');
 is($server->{LISTENER_STATUS},'listening','new listener running after reopen');
 is($server->{FRAMES_ERROR},0,'intentional reopen is not JSON error');
-like(join(' ',@logs),qr/TCP frame batch stopped/, 'reentrant stop diagnosed');
-my $old_log_count=scalar @logs;
+like(join(' ',@logs),qr/TCP frame batch stopped.*discarding 1 remaining complete frame/,
+  'reentrant stop diagnoses how many queued frames were discarded');
 my $other=send_frames($server,'after-reopen',13);
 is($server->{FRAMES_OK},2,'fresh client can publish after reopen');
 is($device->{READINGS}{w_counter1}{VAL},13,'new connection publishes');
