@@ -10,12 +10,12 @@ use lib 't/lib';
 # real selectlist, socket lifecycle or configDB startup behavior.
 our (%defs, %attr, $init_done);
 $init_done = 1;
-my (@accepted, @logs, @timers, @writers, @deleted);
+my (@accepted, @logs, @log_levels, @timers, @writers, @deleted);
 sub AttrVal {
   my ($name, $key, $default) = @_;
   return exists($attr{$name}{$key}) ? $attr{$name}{$key} : $default;
 }
-sub Log3 { push @logs, $_[2] }
+sub Log3 { push @logs, $_[2]; push @log_levels, $_[1] }
 sub readingsSingleUpdate {}
 sub TcpServer_Open { $_[0]{SERVERSOCKET} = 1; return undef }
 sub TcpServer_Close {
@@ -64,6 +64,7 @@ sub new_server {
   %defs = ();
   %attr = ();
   @logs = ();
+  @log_levels = ();
   @accepted = ();
   @timers = ();
   @deleted = ();
@@ -104,6 +105,7 @@ my $server = new_server();
 is($server->{CLIENTS_ACTIVE}, 0, 'active client INTERNAL initialized');
 is($server->{CLIENTS_PEAK}, 0, 'peak client INTERNAL initialized');
 is($server->{CLIENTS_REJECTED}, 0, 'rejected client INTERNAL initialized');
+is($server->{CLIENTS_TIMEOUT}, 0, 'timeout client INTERNAL initialized');
 is($server->{MAX_CLIENTS}, 16, 'default client limit is 16');
 is($server->{CLIENT_IDLE_TIMEOUT}, 60, 'idle timeout is 60 seconds');
 is($server->{CLIENT_MAX_LIFETIME}, 180, 'absolute client lifetime is bounded');
@@ -214,30 +216,108 @@ is($server->{FRAMES_ERROR}, 3, 'truncated EOF tail rejected');
 ok(!exists $defs{$partial_client->{NAME}}, 'partial EOF closes client');
 is($server->{CLIENTS_ACTIVE}, 0, 'partial EOF frees active slot');
 
-# Activity keeps a client alive during idle threshold, but never beyond the
-# absolute lifetime. No polling loop is needed for these timers.
+# A silent connection is a transport timeout, not a malformed telegram.
+# Each timeout is logged, even when there is no unfinished frame.
 my ($idle_client, $idle_writer) = make_client('idle', '192.0.2.28');
 accept_client($server, $idle_client);
 $idle_client->{'.WIFFI_LAST_ACTIVITY'} = Time::HiRes::time() - 61;
 WIFFI_Collector_ClientTimeout($idle_client);
 ok(!exists $defs{$idle_client->{NAME}}, 'idle client gets deleted on timeout');
 is($server->{CLIENTS_ACTIVE}, 0, 'idle cleanup decrements active count');
-is($server->{FRAMES_ERROR}, 4, 'timeout recorded as failed incomplete frame');
+is($server->{CLIENTS_TIMEOUT}, 1, 'idle timeout counted once');
+is($server->{FRAMES_ERROR}, 3, 'empty idle connection is not a bad frame');
+is($log_levels[-1], 3, 'empty-buffer timeout is logged at level 3');
+like($logs[-1], qr/TCP client idle timeout.*no incomplete frame/,
+  'timeout reason and absence of discarded frame logged');
 
-my ($life_client, $life_writer) = make_client('lifetime', '192.0.2.29');
+# A complete valid frame can leave an open connection with an empty buffer.
+my ($complete_client, $complete_writer) =
+  make_client('idle-after-valid', '192.0.2.25');
+accept_client($server, $complete_client);
+my $valid_completed = telegram('44.444')."\x03";
+is(syswrite($complete_writer, $valid_completed), length($valid_completed),
+  'valid delimited frame sent before idle timeout');
+WIFFI_Collector_Read($complete_client);
+is($complete_client->{BUF}, '', 'valid frame removed from receive buffer');
+is($server->{FRAMES_OK}, 5, 'frame accepted before subsequent timeout');
+$complete_client->{'.WIFFI_LAST_ACTIVITY'} = Time::HiRes::time() - 61;
+WIFFI_Collector_ClientTimeout($complete_client);
+ok(!exists $defs{$complete_client->{NAME}},
+  'previously valid client is closed on inactivity');
+is($server->{CLIENTS_TIMEOUT}, 2, 'post-frame idle timeout counted');
+is($server->{FRAMES_ERROR}, 3,
+  'post-frame idle timeout does not invalidate successful frame');
+
+# A real unfinished payload does count as a rejected frame. Its content is
+# logged only on explicit opt-in; the normal timeout reason is always logged.
+my ($unfinished_client, $unfinished_writer) =
+  make_client('idle-partial', '192.0.2.29');
+accept_client($server, $unfinished_client);
+$unfinished_client->{BUF} = '{"modultyp":';
+$unfinished_client->{'.WIFFI_LAST_ACTIVITY'} = Time::HiRes::time() - 61;
+$attr{Collector}{logRejectedPayload} = 1;
+WIFFI_Collector_ClientTimeout($unfinished_client);
+delete $attr{Collector}{logRejectedPayload};
+ok(!exists $defs{$unfinished_client->{NAME}},
+  'unfinished connection released on timeout');
+is($server->{CLIENTS_TIMEOUT}, 3, 'unfinished timeout counted');
+is($server->{FRAMES_ERROR}, 4, 'discarded unfinished frame counted once');
+is($log_levels[-1], 2, 'unfinished-frame timeout is logged at level 2');
+like($logs[-1],
+  qr/TCP client idle timeout; incomplete WIFFI frame discarded.*payload \(12 bytes\): \{"modultyp":/,
+  'rejection reason and opt-in raw unfinished JSON are logged');
+
+# Whitespace does not constitute a telegram (same contract as EOF and ETX).
+my ($whitespace_client, $whitespace_writer) =
+  make_client('idle-whitespace', '192.0.2.30');
+accept_client($server, $whitespace_client);
+$whitespace_client->{BUF} = " \t\n";
+$whitespace_client->{'.WIFFI_LAST_ACTIVITY'} = Time::HiRes::time() - 61;
+WIFFI_Collector_ClientTimeout($whitespace_client);
+is($server->{CLIENTS_TIMEOUT}, 4, 'whitespace-only timeout counted');
+is($server->{FRAMES_ERROR}, 4, 'whitespace-only tail not a rejected telegram');
+is($log_levels[-1], 3, 'whitespace-only timeout logged at level 3');
+
+# Absolute lifetime expires even with recent data; empty buffer does not
+# become a spurious malformed frame.
+my ($life_client, $life_writer) = make_client('lifetime', '192.0.2.31');
 accept_client($server, $life_client);
 $life_client->{'.WIFFI_ACCEPTED_AT'} = Time::HiRes::time() - 181;
 $life_client->{'.WIFFI_LAST_ACTIVITY'} = Time::HiRes::time();
 WIFFI_Collector_ClientTimeout($life_client);
-ok(!exists $defs{$life_client->{NAME}}, 'absolute lifetime closes active sender');
-is($server->{FRAMES_ERROR}, 5, 'absolute lifetime counted as error');
+ok(!exists $defs{$life_client->{NAME}},
+  'absolute lifetime closes active sender');
+is($server->{CLIENTS_TIMEOUT}, 5, 'absolute lifetime counted as timeout');
+is($server->{FRAMES_ERROR}, 4, 'absolute lifetime not counted as bad frame');
+is($log_levels[-1], 3, 'empty-buffer lifetime logged at level 3');
+like($logs[-1], qr/TCP client lifetime exceeded/,
+  'lifetime timeout distinguished in diagnostics');
 
-my ($recent_client, $recent_writer) = make_client('recent', '192.0.2.30');
+# Absolute lifetime with an unfinished frame records both counters.
+my ($life_partial, $life_partial_writer) =
+  make_client('lifetime-partial', '192.0.2.32');
+accept_client($server, $life_partial);
+$life_partial->{BUF} = '{"vars":';
+$life_partial->{'.WIFFI_ACCEPTED_AT'} = Time::HiRes::time() - 181;
+$life_partial->{'.WIFFI_LAST_ACTIVITY'} = Time::HiRes::time();
+WIFFI_Collector_ClientTimeout($life_partial);
+is($server->{CLIENTS_TIMEOUT}, 6, 'unfinished lifetime counted as timeout');
+is($server->{FRAMES_ERROR}, 5, 'unfinished lifetime is one frame rejection');
+is($log_levels[-1], 2, 'unfinished lifetime rejected at level 2');
+like($logs[-1], qr/TCP client lifetime exceeded; incomplete WIFFI frame/,
+  'lifetime failure names the abandoned unfinished frame');
+unlike($logs[-1], qr/payload \(/,
+  'rejected payload is omitted again after disabling opt-in');
+
+# A timer fired before its deadline should reschedule, not count an expiry.
+my ($recent_client, $recent_writer) = make_client('recent', '192.0.2.33');
 accept_client($server, $recent_client);
 my $scheduled_before = scalar(@timers);
 WIFFI_Collector_ClientTimeout($recent_client);
 ok(scalar(@timers) == $scheduled_before + 1,
   'recent client reschedules for remaining idle/lifetime');
+is($server->{CLIENTS_TIMEOUT}, 6, 'early timer callback is not a timeout');
+is($server->{FRAMES_ERROR}, 5, 'early timer callback is not a frame error');
 CommandDelete(undef, $recent_client->{NAME});
 
 # Server Undef closes all current temporary clients, leaving no active count.
