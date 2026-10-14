@@ -581,7 +581,7 @@ sub WIFFI_DEVICE_Process {
 {
   "name": "FHEM-WIFFI-Device",
   "abstract": "Logical FHEM receiver for one WIFFI device",
-  "version": "v0.1.0",
+  "version": "v0.2.0",
   "author": ["Flachzange"],
   "license": ["open_source"],
   "release_status": "testing"
