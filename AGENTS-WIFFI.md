@@ -52,7 +52,7 @@
 
 ## WIFFI test suite and evidence limits
 
-- The current CI suite is `prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t t/transport.t t/lifecycle.t t/reentrancy.t`; GitHub Actions also performs isolated Perl syntax checks. These checks do **not** establish that real FHEM listener, callbacks, or lifecycle behavior works. Keep this list synchronized with `.github/workflows/perl-tests.yml`.
+- The current CI suite is `prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t t/transport.t t/lifecycle.t t/reentrancy.t t/commandref.t`; GitHub Actions also performs isolated Perl syntax checks. These checks do **not** establish that real FHEM listener, callbacks, or lifecycle behavior works. Keep this list synchronized with `.github/workflows/perl-tests.yml`.
 - Test: split and concatenated TCP telegrams; ETX/EOT and EOF; payloads without terminators; oversized and malformed frames; UTF-8, invalid JSON, missing/duplicate names; different firmware-type values; reconnect, duplicate MACs/IP conflicts; unknown and renamed devices; autocreate collision/injection.
 - Test: large/invalid numeric counters and value precision, string booleans, unchanged values/heartbeat timestamp refresh, event-on-change/update interactions, DbLog effects, and reentrant callbacks.
 - Confirm behavior on a **real test FHEM** and ideally a real WIFFI device before any production recommendation. State exactly what live tests were **not** done.
@@ -72,7 +72,7 @@ These requirements are **WIFFI-specific**, not inherited from the other modules:
 
 ## WIFFI-specific follow-up responsibilities
 
-- Issue #8 tracks bilingual FHEM commandref and release readiness; issue #9 tracks live FHEM verification of the implemented `disable` attribute.
+- The modules embed English and German FHEM commandref POD sections following FHEM documentation conventions. Keep command anchors and help content synchronized with real setters, attributes and the README; omit implementation TODOs or development-status remarks from user-facing help. `t/commandref.t` checks structural consistency. Separate release verification is described in `docs/release-readiness.md` (issue #8). Issue #9 tracks live FHEM verification of the implemented `disable` attribute.
 - Issue #10 is the FHEM framework compatibility audit; its required knowledge transfer must incorporate verified reusable FHEM findings in the generic `AGENTS.md` and WIFFI-only findings here.
 - Keep `README.md`, automated tests, the lifecycle matrix and Draft PR #1 aligned with demonstrated behavior; do not merge or call this module production-validated without explicit maintainer approval.
 
