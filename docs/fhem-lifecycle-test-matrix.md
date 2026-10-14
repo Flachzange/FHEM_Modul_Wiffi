@@ -77,6 +77,22 @@ From the FHEM host's shell, optionally verify the actual TCP listener using `ss 
 
 `t/reentrancy.t` additionally injects synchronous Reading and DEFINED/ATTR callback actions (listener reopen/modify/delete, client and logical device delete/modify, plus identity-preserving renames). The tests use real WIFFI modules and FHEM contract doubles; actual DOIF/notify behavior, socket lifecycle, and configDB still need validation. 
 
-`t/lifecycle.t` checks callback registration, bind failure and recovery, repeated failure logging, manual reopen, active-child cleanup, failed `CommandDelete` / partial `DeleteFn` cleanup with no false listener recovery, manual retry, correct selectlist key on `modify` and `rename`, deferred startup rename, and undef/redefine behavior. `t/transport.t` checks connection limits and timeouts. All seven tests run under isolated FHEM contract doubles, not a full FHEM runtime; they do **not** establish configDB persistence, physical socket handles or select-list lifetime on the target system.
+`t/lifecycle.t` checks callback registration, bind failure and recovery, repeated failure logging, manual reopen, active-child cleanup, failed `CommandDelete` / partial `DeleteFn` cleanup with no false listener recovery, manual retry, correct selectlist key on `modify` and `rename`, deferred startup rename, undef/redefine behavior, and the isolated collector-disable contract (including startup and failed re-enable). `t/transport.t` checks connection limits and timeouts. All seven tests run under isolated FHEM contract doubles, not a full FHEM runtime; they do **not** establish configDB persistence, physical socket handles or select-list lifetime on the target system.
 
-Issue #9 tracks the separate implementation of the standard FHEM `disable` attribute.
+## FHEM `disable` integration acceptance (Issue #9)
+
+The `disable` contract now has isolated regression tests in `t/lifecycle.t`, `t/autocreate.t` and `t/set.t`, but **none of the following real-FHEM scenarios has been executed**. These are additional checks, not a revision of the still-unverified L01–L18 matrix above.
+
+| ID | Scenario | Expected live observation | Live status |
+| --- | --- | --- | --- |
+| D01 | FHEM startup with `attr WIFFI_Collector disable 1` already saved | Definition restored; no TCP bind, selectlist listener or accepted child | Not run |
+| D02 | `disable 1` while listener and TCP clients are active | Listener socket and temporary clients removed; timeout timers canceled; no subsequent telemetry; logical-device readings retained | Not run |
+| D03 | `disable 0`, repeated toggles, `deleteattr disable` | Port opened exactly once, TCP messages resume; no duplicate listener | Not run |
+| D04 | `set ... reopen` while Collector disabled; enable with occupied TCP port | Reopen refused while disabled; failed bind diagnosed; manual recovery possible after releasing port | Not run |
+| D05 | `modify` and `rereadcfg` while Collector disabled | No premature bind; modified configured port respected when enabled; no stale clients | Not run |
+| D06 | Disable a known WIFFI_DEVICE while another device continues | Disabled device readings, heartbeat and type remain unchanged; enabled device keeps updating; no duplicate autocreate | Not run |
+| D07 | Disabled WIFFI_DEVICE HTTP control and outstanding asynchronous request | All commands refused, in-flight request canceled, late callback inert; `disable 0` restores control | Not run |
+| D08 | `deleteattr <WIFFI_DEVICE> disable` and re-enable after FHEM restart | Next valid telegram updates original device; no stale heartbeat/peer or extra device | Not run |
+
+Use a staging FHEM setup. Record the actual FHEM revision/configuration backend, `list` output, socket/selectlist observations, the tested TCP peer/port and relevant logs. Test asynchronous command cancellation on a noncritical output. Do not mark these rows verified based only on the isolated Perl tests.
+
