@@ -248,4 +248,28 @@ my $after_deleteattr = $calls[-1];
 $after_deleteattr->{code}=200;
 $after_deleteattr->{callback}->($after_deleteattr,'','');
 
+# FHEM's DoSet calls SetFn in list context. Returning a true second value
+# suppresses DoSet's automatic command event; telemetry alone reports state.
+$device = init();
+my ($accepted, $skip_trigger) = WIFFI_DEVICE_Set($device,'Pump','on');
+is($accepted,undef,'HTTP dispatch returns no FHEM error in list context');
+is($skip_trigger,1,'accepted asynchronous command suppresses synthetic on event');
+ok(!exists $device->{READINGS}{state},
+  'HTTP dispatch does not create an extra state reading');
+my $quiet_on = $calls[-1];
+$quiet_on->{callback}->($quiet_on,'','');
+($accepted, $skip_trigger) = WIFFI_DEVICE_Set($device,'Pump','httpGet','/status');
+is($accepted,undef,'generic command returns success in list context');
+is($skip_trigger,1,'generic HTTP command suppresses synthetic set event');
+my $quiet_get = $calls[-1];
+$quiet_get->{callback}->($quiet_get,'','');
+($accepted, $skip_trigger) = WIFFI_DEVICE_Set($device,'Pump','noSuchSet');
+like($accepted,qr/Unknown argument/,'invalid set still reports an error');
+ok(!defined $skip_trigger,'invalid set does not claim successful dispatch');
+$throw_http=1;
+($accepted,$skip_trigger)=WIFFI_DEVICE_Set($device,'Pump','off');
+like($accepted,qr/Failed to send/,'failed HTTP initiation reports an error in list context');
+ok(!defined $skip_trigger,'failed initiation does not claim successful dispatch');
+$throw_http=0;
+
 done_testing();
