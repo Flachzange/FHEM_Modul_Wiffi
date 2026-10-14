@@ -137,7 +137,9 @@ $device->{PEER} = '192.0.2.21';
 delete $defs{Collector};
 like(WIFFI_DEVICE_Set($device,'Pump','on'),qr/collector is not defined/,
   'no command with missing associated collector');
+# Recreate the physical IO device and reassign the logical IODev pointer.
 $defs{Collector} = { NAME=>'Collector', TYPE=>'WIFFI_Collector' };
+$device->{IODev} = $defs{Collector};
 $device->{MODULTYP} = 'weatherman';
 like(WIFFI_DEVICE_Set($device,'Pump','on'),qr/Unknown argument.*reset httpGet/,
   'weatherman offers reset but no pump shortcuts');
