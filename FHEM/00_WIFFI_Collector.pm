@@ -77,6 +77,9 @@ sub WIFFI_Collector_Decode {
   }
 
   for my $key (keys %{$obj->{Systeminfo}}) {
+    # The mandatory hyphenated MAC key identifies the sender, but is not
+    # a public Systeminfo reading (same policy as the original collector).
+    next if $key eq 'MAC-Adresse';
     die "Systeminfo: invalid field name"
       unless $key =~ /\A[A-Za-z_][A-Za-z0-9_.-]*\z/;
     my $name = "Systeminfo_$key";
