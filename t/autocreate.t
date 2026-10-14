@@ -241,6 +241,19 @@ WIFFI_Collector_ProcessFrame($server, $raw, '192.0.2.21');
 is($server->{AUTOCREATED}, 0, 'deleted during ATTR setup not counted');
 is($server->{FRAMES_UNKNOWN}, 1, 'deleted during ATTR not published');
 
+# If a DEFINED/ATTR hook drops IODev, do not persist a MAC-only
+# definition that can later attach to an unintended collector.
+$server = start_case();
+$attr{Collector}{autocreate} = 1;
+$on_attr = sub { delete $attr{$_[0]}{IODev} if $_[1] eq 'IODev' };
+WIFFI_Collector_ProcessFrame($server, $raw, '192.0.2.21');
+is($server->{AUTOCREATED}, 0,
+  'autocreate does not finalize an IODev binding that was not persisted');
+is($server->{FRAMES_UNKNOWN}, 1,
+  'a device with missing persisted IODev remains unassigned');
+is($defs{WIFFI_020000000001}{DEF}, 'Collector 02:00:00:00:00:01',
+  'unsafe creation does not silently normalize away the source collector');
+
 # Full MAC prevents aliasing on identical trailing octets.
 $server = start_case();
 $attr{Collector}{autocreate} = 1;
