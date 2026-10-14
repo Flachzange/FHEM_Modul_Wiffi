@@ -46,6 +46,19 @@ like($@, qr/duplicate CCU name/, 'duplicate names rejected');
 my $weather = '{"modultyp":"weatherman","vars":['
   .'{"homematic_name":"w_temperatur","value":"12.3","type":"number"}'
   .'],"Systeminfo":{"MAC-Adresse":"e8:db:84:98:c6:d3","sec_seit_reset":77}}';
+
+my $weather_zero = '{"modultyp":"weatherman","vars":['
+  .'{"homematic_name":"w_lux","type":"number","value":0},'
+  .'{"homematic_name":"w_temperatur","value":"12.3"}'
+  .'],"Systeminfo":{"MAC-Adresse":"e8:db:84:98:c6:d3","sec_seit_reset":78}}';
+my $weather_zero_packet = WIFFI_Collector_Decode($weather_zero);
+is($weather_zero_packet->{readings}{w_lux}, '0',
+   'WEATHERMAN zero brightness is a legitimate measurement, not null');
+is($weather_zero_packet->{readings}{Systeminfo_sec_seit_reset}, '78',
+   'valid zero brightness still updates heartbeat');
+ok(!exists $weather_zero_packet->{readings}{'Systeminfo_MAC-Adresse'},
+   'hyphenated MAC identity is not published as a reading');
+
 my $weather_packet = WIFFI_Collector_Decode($weather);
 is($weather_packet->{readings}{w_temperatur}, '12.3',
   'optional WEATHERMAN brightness can be absent');
