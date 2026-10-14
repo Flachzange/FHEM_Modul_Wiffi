@@ -116,8 +116,8 @@ like(WIFFI_DEVICE_Set($device,'Pump','on-for-timer'),qr/Usage/,
   'missing duration is rejected');
 like(WIFFI_DEVICE_Set($device,'Pump','on','extra'),qr/Usage/,
   'extra arguments rejected');
-like(WIFFI_DEVICE_Set($device,'Pump','reset'),qr/Unknown argument/,
-  'undocumented command unavailable');
+like(WIFFI_DEVICE_Set($device,'Pump','factory'),qr/Unknown argument/,
+  'destructive undocumented convenience command remains unavailable');
 
 $device->{PEER} = 'http://192.0.2.21:3000/';
 like(WIFFI_DEVICE_Set($device,'Pump','on'),qr/No valid WIFFI TCP peer/,
@@ -156,8 +156,9 @@ $get->{code} = 200;
 $get->{callback}->($get, '', 'ok');
 ok(!exists $device->{'.WIFFI_HTTP'}, 'generic callback releases pending command');
 
+my $calls_before_invalid_http_get = scalar @calls;
 for my $bad (
-  'https://example.com/?reset:',
+  'https://example.com/?reset:'
   '//evil.example/?reset:',
   'http://192.0.2.3/',
   'reset:',
@@ -176,7 +177,8 @@ like(WIFFI_DEVICE_Set($device,'Pump','httpGet'),qr/Usage/,
   'generic GET requires exactly one path');
 like(WIFFI_DEVICE_Set($device,'Pump','httpGet','/ok','/extra'),qr/Usage/,
   'generic GET rejects multiple path arguments');
-is(scalar @calls, 5, 'invalid generic GET arguments never initiate HTTP');
+is(scalar @calls, $calls_before_invalid_http_get,
+  'invalid generic GET arguments never initiate HTTP');
 
 $device->{MODULTYP} = 'PULSECOUNTER';
 like(WIFFI_DEVICE_Set($device,'Pump','on'), qr/Unknown argument.*counter reset httpGet/,
