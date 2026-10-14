@@ -13,7 +13,7 @@ Use this checklist when preparing a **new release**; it is not part of the FHEM 
   ```
   Review the rendered English and German help entries, including UTF-8/HTML entities and command anchors. This checks FHEM's actual documentation tool, not just our lightweight syntax test.
 - Compare `define`, `set`, `attr`, HTTP command limitations and auto-creation behavior against current source and both commandref languages. Keep the commandref free of engineering TODOs and development/test-status notes.
-- Check README, `AGENTS.md`, `AGENTS-WIFFI.md`, embedded GPL notices, LICENSE, release notes and any version/META declarations (if added). No version bump is required solely for documentation.
+- Check README, `AGENTS.md`, `AGENTS-WIFFI.md`, embedded GPL notices, LICENSE, release notes and the FHEM::Meta declarations. The embedded `version` of both installable modules must match; validate the resulting `FVERSION` INTERNALS in real FHEM and verify the release tag (if any) refers to exactly those source files. No version bump is required solely for documentation or tests. This experimental branch version does not itself imply a published release.
 
 ## Real FHEM and WIFFI behavior
 
