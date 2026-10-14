@@ -216,8 +216,12 @@ sub WIFFI_DEVICE_Process {
 <ul>
   <li><code>define &lt;name&gt; WIFFI_DEVICE &lt;collector-name&gt; &lt;MAC-address&gt;</code><br>
       Define a logical WIFFI sender by its collector and MAC address.
-      The MAC address is normalized for lookup. Example:
-      <code>define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 02:00:00:00:00:01</code>.
+      The MAC address may use six hexadecimal octets with colons or
+      exactly 12 hexadecimal digits without separators (case-insensitive).
+      Both are stored in uppercase colon-separated form.
+      Examples (alternatives):
+      <code>define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 02:00:00:00:00:01</code>
+      or <code>define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 020000000001</code>.
       The collector can also create logical devices automatically when
       its <code>autocreate</code> attribute is enabled.</li>
 </ul>
@@ -304,9 +308,13 @@ sub WIFFI_DEVICE_Process {
 <ul>
   <li><code>define &lt;name&gt; WIFFI_DEVICE &lt;collector-name&gt; &lt;MAC-Adresse&gt;</code><br>
       Erstellt ein logisches Ger&auml;t mit Collector und MAC-Adresse.
-      Die MAC-Adresse wird f&uuml;r den Vergleich normalisiert.
-      Beispiel:
-      <code>define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 02:00:00:00:00:01</code>.
+      Die MAC-Adresse kann aus sechs Hex-Oktetten mit Doppelpunkten
+      oder aus genau zw&ouml;lf Hex-Zeichen ohne Trennzeichen bestehen
+      (Gro&szlig;-/Kleinschreibung beliebig). Intern wird immer die
+      gro&szlig;geschriebene Form mit Doppelpunkten verwendet.
+      Beispiele (Alternativen):
+      <code>define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 02:00:00:00:00:01</code>
+      oder <code>define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 020000000001</code>.
       Bei aktiviertem <code>autocreate</code> kann der Collector
       neue Ger&auml;te auch selbst anlegen.</li>
 </ul>
