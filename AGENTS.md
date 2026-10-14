@@ -40,6 +40,7 @@ This is the reusable foundation for coding agents developing FHEM Perl modules. 
 - Use stable ownership evidence (for example FUUID) before any persistent overwrite/deletion/migration. Never adopt data merely because an old name is reused.
 - Prefer `readingsBeginUpdate`/`readingsBulkUpdate`/`readingsEndUpdate` for coherent per-telegram changes; verify how event-on-change/update attributes interact with value timestamps and downstream consumers.
 - Keep public diagnostic readings minimal. Avoid publishing redundant copies of raw JSON, protocol metadata, and internal counters as readings without a real user-facing need.
+- For externally distributed FHEM modules, explicitly check that users can identify the installed module revision in FHEM. `FHEM::Meta` with an embedded version and `FVERSION` is a supported pattern; verify actual `InitMod`/`SetInternals` behavior against FHEM when adopting it. Module version and connected-device firmware version are different; do not create redundant version readings or claim a version is installed without verifying its code.
 - New dependencies require justification, documentation, and CI coverage. Do not introduce a generic framework or many single-purpose helpers where one clear path suffices.
 
 ## Verified FHEM core behavior (source-backed, not a live test)
