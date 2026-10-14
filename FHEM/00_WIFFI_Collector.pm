@@ -7,6 +7,7 @@ use Errno qw(EAGAIN EWOULDBLOCK);
 use TcpServerUtils;
 use JSON::PP ();
 use Time::HiRes ();
+use FHEM::Meta;
 use vars qw(%defs %selectlist $init_done $readingFnAttributes);
 
 # Parser helpers live here so an installed FHEM module needs no additional .pm file.
@@ -147,6 +148,7 @@ sub WIFFI_Collector_Initialize {
   $hash->{AttrFn} = 'WIFFI_Collector_Attr';
   $hash->{RenameFn} = 'WIFFI_Collector_Rename';
   $hash->{AttrList} = 'autocreate:0,1 logRejectedPayload:0,1 disable:0,1 allowfrom '.$readingFnAttributes;
+  return FHEM::Meta::InitMod(__FILE__, $hash);
 }
 
 # Start and stop the listener through one path for initial define, modify
@@ -260,6 +262,7 @@ sub WIFFI_Collector_Define {
   return 'Usage: define <name> WIFFI_Collector <tcp-port>'
     unless @parts == 3 && $port =~ /\A[0-9]{1,5}\z/
       && $port >= 1 && $port <= 65535;
+  return $@ unless FHEM::Meta::SetInternals($hash);
 
   # FHEM invokes DefFn on modify with OLDDEF set, reusing the same hash.
   # Reject invalid port arguments BEFORE tearing down a healthy listener.
@@ -551,6 +554,10 @@ sub WIFFI_Collector_ProcessFrame {
     return 1;
   }
 
+  # Accepted sender, whether assigned or not. Invalid/conflicting frames
+  # do not advance this diagnostic INTERNAL.
+  $server->{LAST_TELEGRAM} = TimeNow();
+
   # Stable, unambiguous default names.  Using the full MAC also makes the
   # name independent of firmware-specific modultyp strings.
   if (!$device && AttrVal($server->{NAME}, 'autocreate', 0)) {
@@ -797,5 +804,16 @@ sub WIFFI_Collector_ProcessFrame {
 </ul>
 
 =end html_DE
+
+=for :application/json;q=META.json 00_WIFFI_Collector.pm
+{
+  "name": "FHEM-WIFFI-Collector",
+  "abstract": "Shared TCP collector for classic WIFFI telemetry",
+  "version": "v0.1.0",
+  "author": ["Flachzange"],
+  "license": ["open_source"],
+  "release_status": "testing"
+}
+=end :application/json;q=META.json
 
 =cut
