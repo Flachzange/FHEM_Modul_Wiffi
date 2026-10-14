@@ -158,7 +158,7 @@ ok(!exists $device->{'.WIFFI_HTTP'}, 'generic callback releases pending command'
 
 my $calls_before_invalid_http_get = scalar @calls;
 for my $bad (
-  'https://example.com/?reset:'
+  'https://example.com/?reset:',
   '//evil.example/?reset:',
   'http://192.0.2.3/',
   'reset:',
