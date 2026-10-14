@@ -5,7 +5,7 @@ use strict;
 use warnings;
 use HttpUtils;
 use FHEM::Meta;
-use vars qw(%defs $readingFnAttributes);
+use vars qw(%defs $init_done $readingFnAttributes);
 
 sub WIFFI_DEVICE_Initialize {
   my ($hash) = @_;
@@ -89,6 +89,9 @@ sub WIFFI_DEVICE_Define {
     $hash->{IODevMissing} = 1;
     $hash->{IODevName} = $preferred;
   } else {
+    return 'IODev must be a WIFFI_Collector'
+      if $preferred && (($defs{$preferred}{TYPE} // '') ne 'WIFFI_Collector'
+        || defined $defs{$preferred}{SNAME});
     AssignIoPort($hash, $preferred);
   }
   if ($hash->{IODev} && ($hash->{IODev}{TYPE} // '') ne 'WIFFI_Collector') {
