@@ -42,6 +42,7 @@
 
 - For newly autocreated WIFFI devices, apply `event-on-change-reading .*`, `event-on-update-reading Systeminfo_sec_seit_reset`, and `DbLogExclude ^Systeminfo_sec_seit_reset$` as user-editable defaults. This suppresses unchanged-value events while retaining a heartbeat event without filling DbLog with uptime counters. Do not change these attributes on existing devices or overwrite values set by `DEFINED` hooks. Pump-specific `stateFormat`/`devStateIcon` defaults still apply only to `wiffi-pump`. Avoid per-sensor custom timers. Explicitly document consequences for logging and periodic graph samples.
 - `WIFFI_Collector` owns the shared TCP listener and protocol parser. `WIFFI_DEVICE` represents one logical sender by collector + normalized MAC; its sensor Readings come from the validated telegram.
+- Both modules support FHEM `disable:0,1` (issue #9). A disabled collector closes its listener and temporary clients, does not bind at startup or permit manual `reopen`, and restarts its configured listener on `disable 0`/`deleteattr disable`. A disabled logical `WIFFI_DEVICE` remains matched by MAC but receives no telemetry, state, heartbeat or error-count changes; it refuses all HTTP setters and closes pending requests. Other logical devices continue to receive telemetry. Preserve definitions and previous readings. These are independent scopes: disabling the collector alone does **not** block a logical device's direct HTTP control. Do not add new Readings, timer loops or duplicate state flags. FHEM calls `AttrFn` before committing or deleting an attribute: handle transitions from the callback arguments, not a presumed already-updated `AttrVal`. Verify startup, modify, repeated toggles and partial TCP cleanup.
 - Do not silently alter previously configured `stateFormat`, `devStateIcon`, event/DbLog attributes or user-owned device configuration during a device-type change.
 - **Issue #6 decision (2026-10-14):** Do not add age-based HTTP-command blocking merely because the last accepted WIFFI TCP telegram is old. In this deployment the extra state and false blocks outweigh the theoretical stale-IP benefit. Keep the existing TCP-peer validation, fixed host and HTTP safety constraints; reconsider only with concrete operational evidence.
 
@@ -71,7 +72,7 @@ These requirements are **WIFFI-specific**, not inherited from the other modules:
 
 ## WIFFI-specific follow-up responsibilities
 
-- Issue #8 tracks bilingual FHEM commandref and release readiness; issue #9 tracks the standard FHEM `disable` attribute.
+- Issue #8 tracks bilingual FHEM commandref and release readiness; issue #9 tracks live FHEM verification of the implemented `disable` attribute.
 - Issue #10 is the FHEM framework compatibility audit; its required knowledge transfer must incorporate verified reusable FHEM findings in the generic `AGENTS.md` and WIFFI-only findings here.
 - Keep `README.md`, automated tests, the lifecycle matrix and Draft PR #1 aligned with demonstrated behavior; do not merge or call this module production-validated without explicit maintainer approval.
 
