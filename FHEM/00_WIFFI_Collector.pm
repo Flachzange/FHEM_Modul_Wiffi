@@ -142,8 +142,9 @@ sub WIFFI_Collector_Initialize {
   $hash->{UndefFn} = 'WIFFI_Collector_Undef';
   $hash->{ReadFn} = 'WIFFI_Collector_Read';
   $hash->{SetFn} = 'WIFFI_Collector_Set';
+  $hash->{AttrFn} = 'WIFFI_Collector_Attr';
   $hash->{RenameFn} = 'WIFFI_Collector_Rename';
-  $hash->{AttrList} = 'autocreate:0,1 logRejectedPayload:0,1 allowfrom '.$readingFnAttributes;
+  $hash->{AttrList} = 'autocreate:0,1 logRejectedPayload:0,1 disable:0,1 allowfrom '.$readingFnAttributes;
 }
 
 # Start and stop the listener through one path for initial define, modify
@@ -221,6 +222,35 @@ sub WIFFI_Collector_OpenListener {
   return undef;
 }
 
+# FHEM calls AttrFn before storing/removing the attribute. The requested
+# transition therefore comes from $cmd/$value, not AttrVal(disable).
+sub WIFFI_Collector_Attr {
+  my ($cmd, $name, $attr_name, $value) = @_;
+  return undef unless $attr_name eq 'disable';
+  my $hash = $defs{$name};
+  return undef unless $hash && !defined $hash->{SNAME};
+
+  if ($cmd eq 'set') {
+    return 'Usage: attr <collector> disable 0|1'
+      unless defined $value && $value =~ /\A[01]\z/;
+    if ($value eq '1') {
+      # During config loading, the deferred initial bind will check disable.
+      WIFFI_Collector_CloseListener($hash, 'disabled') if $init_done;
+      return undef;
+    }
+  } elsif ($cmd ne 'del' || AttrVal($name, 'disable', 0) ne '1') {
+    return undef;
+  }
+
+  return undef unless $init_done;
+  return undef if defined $hash->{SERVERSOCKET};
+  # Reuse the existing cleanup contract, including partial client deletion.
+  my $err = WIFFI_Collector_CloseListener($hash, 'enable');
+  return $err if $err;
+  WIFFI_Collector_OpenListener($hash);
+  return undef; # A failed bind remains visible through LISTENER_ERROR.
+}
+
 sub WIFFI_Collector_Define {
   my ($hash, $def) = @_;
   my ($name, $type, $port) = split /\s+/, $def;
@@ -253,6 +283,7 @@ sub WIFFI_Collector_Define {
   $hash->{LISTENER_ERROR} = '';
 
   if ($init_done) {
+    return undef if AttrVal($name, 'disable', 0) eq '1';
     # Preserve the defined collector on a failed bind so an operator can
     # inspect LISTENER_ERROR and recover with set <collector> reopen.
     WIFFI_Collector_OpenListener($hash);
@@ -262,6 +293,7 @@ sub WIFFI_Collector_Define {
     # The collector may have been renamed before startup initialization ends.
     my $current_name = $hash->{NAME};
     return unless $defs{$current_name} && $defs{$current_name} == $hash;
+    return if AttrVal($current_name, 'disable', 0) eq '1';
     WIFFI_Collector_OpenListener($hash);
   }, $hash, 0);
   return undef;
@@ -272,6 +304,7 @@ sub WIFFI_Collector_Set {
   return 'Unknown argument '.($cmd // '').', choose one of reopen'
     unless defined $cmd && $cmd eq 'reopen';
   return 'Usage: set <collector> reopen' if @args;
+  return 'WIFFI collector is disabled' if AttrVal($name, 'disable', 0) eq '1';
   my $err = WIFFI_Collector_CloseListener($hash, 'manual reopen');
   return $err if $err;
   $err = WIFFI_Collector_OpenListener($hash);
@@ -504,6 +537,9 @@ sub WIFFI_Collector_ProcessFrame {
     return 1;
   }
   my $device = $matches[0];
+  # A disabled logical device keeps its identity but receives no telemetry;
+  # this is deliberate, not an unknown device or malformed frame.
+  return 1 if $device && AttrVal($device->{NAME}, 'disable', 0) eq '1';
   if ($device && defined $device->{PEER} && $device->{PEER} ne $peer) {
     $server->{FRAMES_ERROR}++;
     WIFFI_Collector_LogRejected($server, $peer,
