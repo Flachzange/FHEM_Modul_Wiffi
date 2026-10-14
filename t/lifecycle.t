@@ -108,6 +108,8 @@ is($initialized_module->{SetFn}, 'WIFFI_Collector_Set',
    'standard SetFn callback registered');
 is($initialized_module->{RenameFn}, 'WIFFI_Collector_Rename',
    'standard RenameFn callback registered');
+is($initialized_module->{AttrFn}, 'WIFFI_Collector_Attr', 'collector AttrFn registered');
+like($initialized_module->{AttrList}, qr/disable:0,1/, 'collector offers disable attribute');
 is($h->{LISTENER_STATUS}, 'listening', 'listener status INTERNAL set on success');
 is($h->{CLIENTS_TIMEOUT}, 0, 'CLIENTS_TIMEOUT initialized on first define');
 ok(!exists $h->{READINGS}{CLIENTS_TIMEOUT},
@@ -437,5 +439,101 @@ is(WIFFI_Collector_Set($h,'Collector','reopen'),undef,
   'retry removes the original child after silent no-op is fixed');
 ok(!exists $defs{client_silent_noop} && !exists $selectlist{client_silent_noop},
   'recovery cleans original child and selection');
+
+
+# AttrFn fires before FHEM commits a changed/deleted disable attribute.
+$h = open_collector(9195);
+fake_client('disabled_client','Collector');
+$h->{CLIENTS_ACTIVE} = 1;
+like(WIFFI_Collector_Attr('set','Collector','disable','invalid'), qr/disable 0\|1/,
+  'reject invalid disable value');
+is(WIFFI_Collector_Attr('set','Collector','disable','1'),undef,'disable accepted');
+$attr{Collector}{disable}=1;
+ok(!exists $selectlist{'Collector.9195'},'disabled collector has no listener');
+ok(!exists $defs{disabled_client} && !exists $selectlist{disabled_client},
+  'disable deletes accepted TCP client');
+is($h->{CLIENTS_ACTIVE},0,'disable clears live client count');
+like(WIFFI_Collector_Set($h,'Collector','reopen'),qr/disabled/,
+  'manual reopen cannot bypass disabled collector');
+my $opened_before = scalar @opened;
+is(WIFFI_Collector_Attr('set','Collector','disable','0'),undef,
+  'enable accepted while old disable=1 remains stored');
+$attr{Collector}{disable}=0;
+is(scalar @opened,$opened_before+1,'enable opens listener exactly once');
+is(WIFFI_Collector_Attr('set','Collector','disable','0'),undef,
+  'second enable accepted');
+is(scalar @opened,$opened_before+1,'second enable does not duplicate listener');
+is(WIFFI_Collector_Attr('set','Collector','disable','1'),undef,
+  'disable after enable accepted');
+$attr{Collector}{disable}=1;
+is(WIFFI_Collector_Attr('del','Collector','disable'),undef,
+  'deleteattr disable re-enables listener');
+delete $attr{Collector}{disable};
+ok(exists $selectlist{'Collector.9195'},'deleteattr reopens listener');
+
+$h = reset_case();
+$init_done=0;
+is(WIFFI_Collector_Define($h,'Collector WIFFI_Collector 9195'),undef,
+  'pre-init collector definition accepted');
+my $deferred = $timers[0][1];
+ok(ref($deferred) eq 'CODE','initial bind deferred in startup');
+is(WIFFI_Collector_Attr('set','Collector','disable','1'),undef,
+  'startup disable accepted before attr commit');
+$attr{Collector}{disable}=1;
+$init_done=1;
+$deferred->($h);
+is(scalar @opened,0,'disabled startup does not open port');
+is(WIFFI_Collector_Attr('set','Collector','disable','0'),undef,
+  'reenable after disabled startup');
+$attr{Collector}{disable}=0;
+is(scalar @opened,1,'post-startup enable opens once');
+is(WIFFI_Collector_Attr('set','Collector','disable','1'),undef,
+  'disable before modify accepted');
+$attr{Collector}{disable}=1;
+$h->{OLDDEF}='9195';
+is(WIFFI_Collector_Define($h,'Collector WIFFI_Collector 9295'),undef,
+  'modify while disabled succeeds');
+delete $h->{OLDDEF};
+is($h->{TCP_PORT},9295,'disabled modify updates configured port');
+ok(!exists $selectlist{'Collector.9295'},'disabled modify does not bind');
+is(WIFFI_Collector_Attr('del','Collector','disable'),undef,
+  'deleteattr after modify accepted');
+delete $attr{Collector}{disable};
+ok(exists $selectlist{'Collector.9295'},'reenable uses modified port');
+
+$h = reset_case();
+$attr{Collector}{disable}=1;
+$blocked_port{9195}=1;
+is(WIFFI_Collector_Define($h,'Collector WIFFI_Collector 9195'),undef,
+  'disabled collector defined without occupying port');
+is(scalar @opened,0,'disabled define avoids attempted bind');
+is(WIFFI_Collector_Attr('set','Collector','disable','0'),undef,
+  'failed bind on enable still accepts attribute transition');
+$attr{Collector}{disable}=0;
+is($h->{LISTENER_STATUS},'error','failed bind visible in status');
+like($h->{LISTENER_ERROR},qr/Address already in use/,'failed bind reason visible');
+delete $blocked_port{9195};
+is(WIFFI_Collector_Set($h,'Collector','reopen'),undef,
+  'reopen can recover failed enable bind');
+ok(exists $selectlist{'Collector.9195'},'recovery restores listener');
+
+$h = open_collector(9195);
+fake_client('disable_refused','Collector');
+$h->{CLIENTS_ACTIVE}=1;
+$refused_delete{disable_refused}='synthetic refused child';
+is(WIFFI_Collector_Attr('set','Collector','disable','1'),undef,
+  'disable accepted despite child cleanup failure');
+$attr{Collector}{disable}=1;
+is($h->{LISTENER_STATUS},'error','failed child cleanup diagnosed');
+ok(!exists $selectlist{'Collector.9195'},'disable still closes socket on error');
+like(WIFFI_Collector_Attr('set','Collector','disable','0'),
+  qr/disable_refused/,'enable does not reopen while child cleanup fails');
+is($attr{Collector}{disable},1,'failed enable does not commit changed attr');
+delete $refused_delete{disable_refused};
+is(WIFFI_Collector_Attr('set','Collector','disable','0'),undef,
+  'enable recovers after cleanup error is removed');
+$attr{Collector}{disable}=0;
+ok(!exists $defs{disable_refused} && exists $selectlist{'Collector.9195'},
+  'recovery cleans client before reopening');
 
 done_testing();
