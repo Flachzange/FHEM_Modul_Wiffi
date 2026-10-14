@@ -79,11 +79,24 @@ sub WIFFI_DEVICE_Define {
   return 'Invalid WIFFI MAC address' unless $normalized;
   return $@ unless FHEM::Meta::SetInternals($hash);
 
-  # Resolve explicitly configured IODev first; otherwise the legacy hint.
-  # During startup the collector may not yet exist: core resolves
-  # IODevMissing / IODevName after all definitions are loaded.
+  # During configuration restore, do not create/change attributes: they
+  # are loaded separately, possibly after the device and its collector.
+  # For a new interactive define, persist the selected collector through
+  # FHEM's CommandAttr (AssignIoPort alone only sets an internal/reading).
+  my $new_device = !exists $hash->{OLDDEF};
   my $configured = AttrVal($name, 'IODev', undef);
   my $preferred = $configured || $collector;
+  my $ambiguous = 0;
+  if ($init_done && $new_device && !$preferred) {
+    my @collectors = grep {
+      ($defs{$_}{TYPE} // '') eq 'WIFFI_Collector'
+        && !defined $defs{$_}{SNAME}
+        && AttrVal($_, 'disable', 0) ne '1'
+    } keys %defs;
+    $preferred = $collectors[0] if @collectors == 1;
+    $ambiguous = @collectors > 1;
+  }
+
   if ($preferred && !$defs{$preferred}) {
     return "WIFFI collector $preferred is not defined" if $init_done;
     $hash->{IODevMissing} = 1;
@@ -92,7 +105,18 @@ sub WIFFI_DEVICE_Define {
     return 'IODev must be a WIFFI_Collector'
       if $preferred && (($defs{$preferred}{TYPE} // '') ne 'WIFFI_Collector'
         || defined $defs{$preferred}{SNAME});
-    AssignIoPort($hash, $preferred);
+    if ($init_done && $new_device && !$configured && $preferred) {
+      my $error = CommandAttr(undef, "$name IODev $preferred");
+      return "Cannot set IODev: $error" if $error;
+      return 'Cannot persist WIFFI IODev assignment'
+        unless AttrVal($name, 'IODev', '') eq $preferred
+          && $hash->{IODev} && $hash->{IODev} == $defs{$preferred};
+      # Persist a single canonical DEF, including when the collector was
+      # supplied in the legacy-compatible define syntax.
+      $hash->{DEF} = $mac;
+    } elsif (!$ambiguous) {
+      AssignIoPort($hash, $preferred);
+    }
   }
   if ($hash->{IODev} && ($hash->{IODev}{TYPE} // '') ne 'WIFFI_Collector') {
     delete $hash->{IODev};
