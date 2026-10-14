@@ -14,6 +14,7 @@ sub LoadModule {
   require './FHEM/00_WIFFI_Collector.pm';
   return $module;
 }
+sub AttrVal { return $_[2] }
 sub readingsSingleUpdate {
   my ($hash, $key, $value, $trigger) = @_;
   $hash->{READINGS}{$key}{VAL} = $value;
