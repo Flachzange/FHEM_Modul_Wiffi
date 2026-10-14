@@ -2,6 +2,8 @@
 
 Direkte FHEM-Anbindung für klassische WIFFI-Geräte mit kompatiblem TCP/JSON-Telegrammformat, ohne Node-RED oder MQTT. Beispiele sind **WIFFI-pump 2, WEATHERMAN und PULSECOUNTER2-LAN**. Ein Collector empfängt die Daten; jedes WIFFI erhält ein eigenes FHEM-Gerät.
 
+Eine frühere Lösung zur WIFFI-Anbindung in FHEM war [Log2Syslog](https://wiki.fhem.de/wiki/Log2Syslog). Der WIFFI Collector bündelt TCP-Empfang, JSON-Auswertung und die Zuordnung zu eigenen FHEM-Geräten.
+
 Geräteinformationen, Firmware und Anleitungen: [STALL.biz](https://www.stall.biz/).
 
 **Stand: v0.2.1, experimentell.**
