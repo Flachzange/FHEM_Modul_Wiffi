@@ -42,6 +42,18 @@ This is the reusable foundation for coding agents developing FHEM Perl modules. 
 - Keep public diagnostic readings minimal. Avoid publishing redundant copies of raw JSON, protocol metadata, and internal counters as readings without a real user-facing need.
 - New dependencies require justification, documentation, and CI coverage. Do not introduce a generic framework or many single-purpose helpers where one clear path suffices.
 
+## Verified FHEM core behavior (source-backed, not a live test)
+
+The following details were confirmed against [`mhop/fhem-mirror/fhem/fhem.pl`](https://github.com/mhop/fhem-mirror/blob/master/fhem/fhem.pl) (content blob `4430a7967aa318c310535082852f77d4ca3482f8`) and [`TcpServerUtils.pm`](https://github.com/mhop/fhem-mirror/blob/master/fhem/FHEM/TcpServerUtils.pm) (blob `678e1c5bd363fd7a2e5fc74df14484886862203d`), inspected 2026-10-14. Reverify against the **installed FHEM revision** before relying on version-sensitive behavior.
+
+- `DoSet` calls module `SetFn` in **list context**. When a successful setter has produced no event, FHEM normally synthesizes a command event; return a true second `skipTrigger` value when that event would falsely imply a state change. Distinguish asynchronous command acceptance from confirmed hardware telemetry. In Perl, `return wantarray ? (undef, 1) : undef` preserves a scalar success contract while returning two values to FHEM.
+- `CommandAttr`/`CommandDeleteAttr` invoke `AttrFn` **before** writing/removing the attribute. Derive side effects from the callback's `set`/`del` request and requested value, not an assumed new `AttrVal`; return a meaningful error only if the operation truly must be vetoed.
+- `CommandDefine` and `CommandModify` pass the module's definition arguments to `DefFn` without enforcing module-specific counts. Check required **and surplus** arguments before modifying resources, particularly on `modify`.
+- `CommandDelete` leaves the device defined if `UndefFn` or `DeleteFn` refuses removal. `CommandModify` restores the old `DEF` after a failed `DefFn`, **not arbitrary module INTERNALS**. Keep resource ownership and internal configuration consistent on failed changes.
+- For modules using `TcpServerUtils`, `TcpServer_Accept` applies a configured `allowfrom` filter and creates temporary children in FHEM's registries. `TcpServer_Open` may update `state` before bind success; `TcpServer_Close` closes the listener but can leave stale `SERVERSOCKET` metadata. Use actual bind/close results and the FHEM lifecycle, not presentation state, for socket ownership.
+
+These are FHEM framework contracts, **not** instructions to add new retries, counters, timers or guards where the module does not need them. Put project-specific behavior in the relevant `AGENTS-*.md` supplement.
+
 ## Issue triage: practical value before added complexity
 
 Before opening an issue **or recommending a defensive change**, inspect the current code, relevant real-world usage and existing issues. Decide whether any work is justified **before** inventing a fix:
