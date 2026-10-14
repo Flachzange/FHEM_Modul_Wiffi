@@ -219,7 +219,7 @@ For the observed `PULSECOUNTER` module type the device now exposes one additiona
 set WIFFI_PULSECOUNTER_Wasser counter 2 143.550
 ```
 
-It maps directly to the manufacturer's documented `/?counter:<channel>:<value>:` command. Channels 1 through 4 are accepted. The value must use a dot as decimal separator and be within the documented counter range 0..999999; the module forwards the decimal representation unchanged rather than rounding it. Source: [STALL PULSECOUNTER2-LAN command documentation](https://www.stall.biz/project/pulsecounter-lan2-verbraeuche-von-strom-gas-und-wasser-komfortabel-messen/).
+It maps directly to the manufacturer's documented `/?counter:<channel>:<value>:` command. Channels 1 through 4 are accepted. The value must use a dot as decimal separator. The module **conservatively limits input to 0..999999**, matching STALL's published range for the normal `w_counterN` CCU/telemetry values; this is a module-side safety limit, not a claim that `counter_LAN41` cannot internally store larger values. Within that range the decimal representation is forwarded unchanged rather than rounded. Source: [STALL PULSECOUNTER2-LAN command documentation](https://www.stall.biz/project/pulsecounter-lan2-verbraeuche-von-strom-gas-und-wasser-komfortabel-messen/).
 
 This setter deliberately satisfies an **observability requirement**: the resulting physical counter value is sent again in normal telemetry as `w_counter1`..`w_counter4` (or `counter1`..`counter4` with `stripReadingPrefix 1`). An HTTP 2xx response is therefore not treated as confirmation and no optimistic/shadow reading is created. The later telemetry value wins. Device-side counter configuration can quantize the requested value to its configured resolution.
 

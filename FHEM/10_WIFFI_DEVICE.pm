@@ -70,9 +70,10 @@ sub WIFFI_DEVICE_Undef {
   return undef;
 }
 
-# Every WIFFI supports an explicit relative HTTP GET path. The documented
-# pump shortcuts are intentionally available only for type wiffi-pump.
-# HTTP responses never change the authoritative telemetry-driven readings.
+# Every WIFFI supports an explicit relative HTTP GET path. Named shortcuts
+# are exposed only for verified module types: pump controls for wiffi-pump
+# and counter correction for PULSECOUNTER. HTTP responses never change the
+# authoritative telemetry-driven readings.
 sub WIFFI_DEVICE_Set {
   my ($hash, $name, $cmd, @args) = @_;
   my $pump = ($hash->{MODULTYP} // '') eq 'wiffi-pump';
@@ -254,8 +255,10 @@ sub WIFFI_DEVICE_Process {
       (type <code>PULSECOUNTER</code> only)<br>
       Set counter channel 1 to 4 with the documented
       <code>/?counter:&lt;channel&gt;:&lt;value&gt;:</code> command.
-      Values use a dot as decimal separator and must be between 0 and
-      999999. Example:
+      Values use a dot as decimal separator. This module deliberately
+      limits values to 0..999999, matching the manufacturer's published
+      range for the normal <code>w_counterN</code> telemetry/CCU values.
+      Example:
       <code>set WIFFI_PULSECOUNTER_Water counter 2 143.550</code>.
       The HTTP response is not confirmation of the stored value:
       subsequent device telemetry is authoritative. With standard
@@ -362,8 +365,10 @@ sub WIFFI_DEVICE_Process {
       (nur <code>PULSECOUNTER</code>)<br>
       Setzt Z&auml;hlerkanal 1 bis 4 mit dem dokumentierten Befehl
       <code>/?counter:&lt;Kanal&gt;:&lt;Wert&gt;:</code>.
-      Dezimalwerte verwenden einen Punkt und m&uuml;ssen zwischen 0 und
-      999999 liegen. Beispiel:
+      Dezimalwerte verwenden einen Punkt. Das Modul begrenzt die Eingabe
+      bewusst auf 0..999999 entsprechend dem vom Hersteller ver&ouml;ffentlichten
+      Bereich der normalen <code>w_counterN</code>-Telemetrie/CCU-Werte.
+      Beispiel:
       <code>set WIFFI_PULSECOUNTER_Wasser counter 2 143.550</code>.
       Die HTTP-Antwort best&auml;tigt den gespeicherten Wert nicht:
       ma&szlig;geblich ist erst die folgende Ger&auml;tetelemetrie. Bei
