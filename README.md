@@ -238,13 +238,26 @@ A successful HTTP request is **not confirmation that the relay changed state**. 
 - Existing MQTT-derived reading names (e.g. `gas_vars_2_value`, `aussentemperatur`) are deliberately **not** retained; dependent `userReadings`, statistics, DOIF, and DbLog queries need migration.
 - Systeminfo and numeric readings are preserved as text; the code must not interpret units or coerce implausible counters.
 
+## FHEM command reference and release procedure
+
+The two installable FHEM module files contain English and German embedded
+commandref documentation. FHEM displays it through its normal module help
+mechanism (`help WIFFI_Collector` / `help WIFFI_DEVICE`); it covers the
+implemented `define`, `set`, `attr`, reading and diagnostic interfaces.
+The user-facing commandref contains no development TODOs or test-status notes.
+
+The separate [release verification checklist](docs/release-readiness.md)
+covers the FHEM commandref generator, compatibility checks, actual integration
+evidence, migration considerations and packaging. FHEM module documentation
+format follows the [official developer guidelines](https://wiki.fhem.de/wiki/Guidelines_zur_Dokumentation).
+
 ## Testing
 
 ```sh
-prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t t/transport.t t/lifecycle.t t/reentrancy.t
+prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t t/transport.t t/lifecycle.t t/reentrancy.t t/commandref.t
 ```
 
-This is the same seven-file test command used by `.github/workflows/perl-tests.yml`. It exercises the two real Perl modules against **isolated FHEM contract doubles**, not a full FHEM runtime or live socket/hardware environment. The CI workflow also checks Perl syntax for both modules. Real hardware observations and the **unrun** live-FHEM listener/lifecycle matrix are documented separately in [`docs/fhem-lifecycle-test-matrix.md`](docs/fhem-lifecycle-test-matrix.md).
+This is the same eight-file test command used by `.github/workflows/perl-tests.yml`. The `t/commandref.t` test validates English/German commandref sections, anchor parity and simple HTML tag pairing. It exercises the two real Perl modules against **isolated FHEM contract doubles**, not a full FHEM runtime or live socket/hardware environment. The CI workflow also checks Perl syntax for both modules. Real hardware observations and the **unrun** live-FHEM listener/lifecycle matrix are documented separately in [`docs/fhem-lifecycle-test-matrix.md`](docs/fhem-lifecycle-test-matrix.md).
 
 ## License
 
