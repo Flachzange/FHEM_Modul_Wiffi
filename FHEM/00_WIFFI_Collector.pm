@@ -26,8 +26,8 @@ sub WIFFI_Collector_NormalizeMac {
 }
 
 # Keep values as delivered (including large decimals and boolean strings).
-# JSON null means no new value: omit that reading from this update, not the
-# entire telegram. Reject JSON containers rather than silently losing data.
+# JSON null means no new value. Keep its name for mapping validation, but
+# skip publication in WIFFI_DEVICE_Process. Reject unsupported containers.
 sub WIFFI_Collector_ValueText {
   my ($value, $context) = @_;
   return undef unless defined $value;
@@ -76,7 +76,6 @@ sub WIFFI_Collector_Decode {
     }
 
     my $text = WIFFI_Collector_ValueText($var->{value}, "vars[$index]");
-    next unless defined $text; # JSON null: preserve existing reading and timestamp
     $readings{$name} = $text;
     $reported_ip = $text
       if defined $var->{name} && $var->{name} eq '0';
@@ -91,7 +90,6 @@ sub WIFFI_Collector_Decode {
     my $name = "Systeminfo_$key";
     die "Systeminfo: reading name collision" if exists $seen_names{$name};
     my $text = WIFFI_Collector_ValueText($obj->{Systeminfo}{$key}, "Systeminfo");
-    next unless defined $text; # optional Systeminfo null: no update
     $readings{$name} = $text;
   }
 
@@ -649,6 +647,10 @@ sub WIFFI_Collector_ProcessFrame {
     return 1;
   }
 
+  # DEFINED/ATTR handlers may disable a newly autocreated device before its
+  # first telegram. Recheck after setup, before publishing any telemetry.
+  return 1 if AttrVal($device->{NAME}, 'disable', 0) eq '1';
+
   if ($packet->{reported_ip} && $peer ne $packet->{reported_ip}) {
     Log3($server, 3, "$server->{NAME}: reported IP $packet->{reported_ip} ".
       "differs from TCP peer $peer");
@@ -842,7 +844,7 @@ sub WIFFI_Collector_ProcessFrame {
 {
   "name": "FHEM-WIFFI-Collector",
   "abstract": "Shared TCP collector for classic WIFFI telemetry",
-  "version": "v0.2.0",
+  "version": "v0.2.1",
   "author": ["Flachzange"],
   "license": ["open_source"],
   "release_status": "testing"

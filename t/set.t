@@ -3,7 +3,9 @@ use strict;
 use warnings;
 use Test::More;
 use lib 't/lib';
-our (%defs, %attr, @calls, @closed, @logs, $throw_http);
+our (%defs, %attr, @calls, @closed, @logs, $throw_http, $readingFnAttributes);
+$readingFnAttributes = '';
+sub TimeNow { return '2026-10-14 16:00:00' }
 sub HttpUtils_NonblockingGet {
   my ($param) = @_;
   die "synthetic HTTP initiation failure" if $throw_http;

@@ -7,7 +7,7 @@ use version ();
 sub InitMod { return undef }
 sub SetInternals { return 1 }
 sub Get {
-  return '0.002000' if $_[1] eq 'version'; # normalized v0.2.0 from META.json
+  return '0.002001' if $_[1] eq 'version'; # normalized v0.2.1 from META.json
   return undef;
 }
 1;

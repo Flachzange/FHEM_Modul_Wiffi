@@ -33,7 +33,7 @@ is($device{IODevName}, 'WIFFI_TestCollector',
   'legacy collector hint retained for deferred core IODev assignment');
 ok(!exists $device{COLLECTOR}, 'no competing COLLECTOR internal');
 is($device{MAC}, 'B4:E6:2D:17:DB:07', 'shared MAC parser normalized value');
-is($device{FVERSION}, '10_WIFFI_DEVICE.pm:v0.2.0',
+is($device{FVERSION}, '10_WIFFI_DEVICE.pm:v0.2.1',
   'device exposes actual module version as FVERSION INTERNAL without SVN Id');
 is($device{READINGS}{state}{VAL}, 'waiting', 'device waiting for messages');
 

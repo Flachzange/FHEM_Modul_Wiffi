@@ -94,10 +94,12 @@ my $weather_null = '{"modultyp":"weatherman","vars":['
   .'],"Systeminfo":{"MAC-Adresse":"e8:db:84:98:c6:d3",'
   .'"sec_seit_reset":null,"firmware":"test"}}';
 my $weather_null_packet = WIFFI_Collector_Decode($weather_null);
-ok(!exists $weather_null_packet->{readings}{w_lux},
-  'null brightness generates no reading');
-ok(!exists $weather_null_packet->{readings}{Systeminfo_sec_seit_reset},
-  'null optional heartbeat generates no reading');
+ok(exists $weather_null_packet->{readings}{w_lux}
+   && !defined $weather_null_packet->{readings}{w_lux},
+  'null brightness retains its name for mapping validation without a value');
+ok(exists $weather_null_packet->{readings}{Systeminfo_sec_seit_reset}
+   && !defined $weather_null_packet->{readings}{Systeminfo_sec_seit_reset},
+  'null heartbeat retains its name without a value');
 is($weather_null_packet->{readings}{w_temperatur}, '0',
   'string zero remains data alongside null');
 is($weather_null_packet->{readings}{w_text}, '',

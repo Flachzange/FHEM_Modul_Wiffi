@@ -90,7 +90,6 @@ sub WIFFI_DEVICE_Define {
   my $new_device = !exists $hash->{OLDDEF};
   my $configured = AttrVal($name, 'IODev', undef);
   my $preferred = $configured || $collector;
-  my $ambiguous = 0;
   if ($init_done && $new_device && !$preferred) {
     my @collectors = grep {
       ($defs{$_}{TYPE} // '') eq 'WIFFI_Collector'
@@ -98,7 +97,6 @@ sub WIFFI_DEVICE_Define {
         && AttrVal($_, 'disable', 0) ne '1'
     } keys %defs;
     $preferred = $collectors[0] if @collectors == 1;
-    $ambiguous = @collectors > 1;
   }
 
   if ($preferred && !$defs{$preferred}) {
@@ -118,8 +116,12 @@ sub WIFFI_DEVICE_Define {
       # Persist a single canonical DEF, including when the collector was
       # supplied in the legacy-compatible define syntax.
       $hash->{DEF} = $mac;
-    } elsif (!$ambiguous) {
-      AssignIoPort($hash, $preferred);
+    } elsif ($preferred) {
+      # AssignIoPort can substitute the last compatible collector when the
+      # requested IO is disabled. Bind explicitly, like CommandAttr(IODev).
+      # With no configured owner, stay unbound until its saved attr loads.
+      my $error = fhem_setIoDev($hash, $preferred);
+      return $error if $error;
     }
   }
   if ($hash->{IODev} && ($hash->{IODev}{TYPE} // '') ne 'WIFFI_Collector') {
@@ -304,6 +306,7 @@ sub WIFFI_DEVICE_Process {
   $hash->{LAST_TELEGRAM} = TimeNow();
   readingsBeginUpdate($hash);
   for my $reading (sort keys %mapped) {
+    next unless defined $mapped{$reading}; # null: no value/timestamp update
     readingsBulkUpdate($hash, $reading, $mapped{$reading});
   }
   readingsBulkUpdate($hash, 'state', 'online');
@@ -351,6 +354,12 @@ sub WIFFI_DEVICE_Process {
       <code>IODev</code> attribute, then run
       <code>modify &lt;name&gt; &lt;MAC&gt;</code> and <code>save</code>.</li>
 </ul>
+<p>
+  At startup, MAC-only definitions without a saved <code>IODev</code>
+  attribute remain unbound until that attribute is loaded or set explicitly.
+  Explicit and legacy bindings retain the selected collector even when it
+  is disabled; another collector is never substituted.
+</p>
 <a id="WIFFI_DEVICE-set"></a>
 <h4>Set</h4>
 <ul>
@@ -428,14 +437,17 @@ sub WIFFI_DEVICE_Process {
       When 1, remove one leading <code>w_</code> from each
       <code>homematic_name</code> sensor reading. Other reading names
       are unchanged. The default preserves the original CCU names.
-      Avoid collisions if both prefixed and unprefixed names occur.</li>
+      Collisions reject the complete telegram, including when a conflicting
+      measurement is <code>null</code>.</li>
   <li><a id="WIFFI_DEVICE-attr-disable"></a><b>disable</b> (0,1; default 0)<br>
       When 1, ignore incoming telemetry and do not update this
       device's readings, state, module type or heartbeat. Other
       WIFFI devices continue to update. Block all HTTP Set commands
       and cancel a pending HTTP request. The previous readings and
       device definition remain. Use <code>disable 0</code> or
-      <code>deleteattr &lt;name&gt; disable</code> to re-enable.</li>
+      <code>deleteattr &lt;name&gt; disable</code> to re-enable.
+      Disabling from a DEFINED/ATTR handler during autocreate also blocks
+      telemetry from the first telegram.</li>
 </ul>
 <a id="WIFFI_DEVICE-readings"></a>
 <h4>Readings and display</h4>
@@ -495,6 +507,13 @@ sub WIFFI_DEVICE_Process {
       Migration ohne Neuanlage: zuerst <code>attr &lt;name&gt; IODev &lt;collector&gt;</code>,
       dann <code>modify &lt;name&gt; &lt;MAC&gt;</code> und <code>save</code>.</li>
 </ul>
+<p>
+  Beim Start bleiben MAC-only-Definitionen ohne gespeichertes
+  <code>IODev</code>-Attribut ungebunden, bis das Attribut geladen oder
+  explizit gesetzt wird. Explizite und alte Zuordnungen behalten ihren
+  ausgew&auml;hlten Collector auch bei <code>disable 1</code>;
+  es wird kein anderer Collector als Ersatz ausgew&auml;hlt.
+</p>
 <a id="WIFFI_DEVICE-set"></a>
 <h4>Set</h4>
 <ul>
@@ -579,8 +598,9 @@ sub WIFFI_DEVICE_Process {
       Entfernt bei 1 genau ein f&uuml;hrendes <code>w_</code>
       aus jedem Sensor-Reading-Namen (<code>homematic_name</code>).
       Andere Readings bleiben unver&auml;ndert. Standardm&auml;&szlig;ig
-      bleiben die originalen CCU-Namen erhalten. M&ouml;gliche
-      Namenskollisionen beachten.</li>
+      bleiben die originalen CCU-Namen erhalten. Namenskollisionen weisen
+      das ganze Telegramm ab, auch bei einem kollidierenden
+      Messwert <code>null</code>.</li>
   <li><a id="WIFFI_DEVICE-attr-disable"></a><b>disable</b> (0,1; Standard 0)<br>
       Mit 1 werden eingehende Telegramme f&uuml;r dieses Ger&auml;t
       ignoriert: Messwerte, <code>state</code>, Typ und Heartbeat
@@ -589,7 +609,9 @@ sub WIFFI_DEVICE_Process {
       HTTP-Anfragen werden abgebrochen. Definition und bisherige
       Readings bleiben erhalten. Reaktivierung mit
       <code>disable 0</code> oder
-      <code>deleteattr &lt;name&gt; disable</code>.</li>
+      <code>deleteattr &lt;name&gt; disable</code>.
+      Deaktivierung durch einen DEFINED/ATTR-Handler beim Autocreate
+      verhindert auch die Telemetrie des ersten Telegramms.</li>
 </ul>
 <a id="WIFFI_DEVICE-readings"></a>
 <h4>Readings und Anzeige</h4>
@@ -619,7 +641,7 @@ sub WIFFI_DEVICE_Process {
 {
   "name": "FHEM-WIFFI-Device",
   "abstract": "Logical FHEM receiver for one WIFFI device",
-  "version": "v0.2.0",
+  "version": "v0.2.1",
   "author": ["Flachzange"],
   "license": ["open_source"],
   "release_status": "testing"

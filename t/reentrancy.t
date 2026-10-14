@@ -102,7 +102,7 @@ sub CommandAttr {
     if $key eq 'IODev';
   return $error if $error;
   $attr{$name}{$key}=$value;
-  AssignIoPort($defs{$name},$value) if $key eq 'IODev';
+  fhem_setIoDev($defs{$name},$value) if $key eq 'IODev';
   if ($on_attr) {
     my $callback=$on_attr;
     undef $on_attr;
@@ -336,5 +336,17 @@ is(scalar @events,0,'ATTR event interruption stops data dispatch');
 ok(!$defs{$client->{NAME}},'old connection closed by ATTR callback');
 ok(!exists $defs{WIFFI_020000000001}{READINGS}{w_counter1},
    'no stale device reading written after ATTR reopen');
+
+# DEFINED can disable a just-created target while two TCP frames are queued.
+($server,$device)=reset_case();
+$attr{Collector}{autocreate}=1;
+delete $defs{Pump};
+$on_define=sub { $attr{$_[0]{NAME}}{disable}=1 };
+$client=send_frames($server,'defined-disable',121,122);
+is(scalar @events,0,'DEFINED disable blocks all queued Reading events');
+is($server->{FRAMES_OK},0,'disabled autocreated target publishes no queued frame');
+ok(!exists $defs{WIFFI_020000000001}{LAST_TELEGRAM},
+  'disabled autocreated target never refreshes receive age');
+CommandDelete(undef,$client->{NAME});
 
 done_testing();

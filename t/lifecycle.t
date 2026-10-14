@@ -110,7 +110,7 @@ is($initialized_module->{RenameFn}, 'WIFFI_Collector_Rename',
    'standard RenameFn callback registered');
 is($initialized_module->{AttrFn}, 'WIFFI_Collector_Attr', 'collector AttrFn registered');
 like($initialized_module->{AttrList}, qr/disable:0,1/, 'collector offers disable attribute');
-is($h->{FVERSION}, '00_WIFFI_Collector.pm:v0.2.0',
+is($h->{FVERSION}, '00_WIFFI_Collector.pm:v0.2.1',
   'collector exposes actual module version as FVERSION INTERNAL without SVN Id');
 is($h->{LISTENER_STATUS}, 'listening', 'listener status INTERNAL set on success');
 is($h->{CLIENTS_TIMEOUT}, 0, 'CLIENTS_TIMEOUT initialized on first define');
@@ -483,13 +483,13 @@ $h = reset_case();
 $init_done=0;
 is(WIFFI_Collector_Define($h,'Collector WIFFI_Collector 9195'),undef,
   'pre-init collector definition accepted');
-my $deferred = $timers[0][1];
-ok(ref($deferred) eq 'CODE','initial bind deferred in startup');
+my $disabled_startup_bind = $timers[0][1];
+ok(ref($disabled_startup_bind) eq 'CODE','initial bind deferred in startup');
 is(WIFFI_Collector_Attr('set','Collector','disable','1'),undef,
   'startup disable accepted before attr commit');
 $attr{Collector}{disable}=1;
 $init_done=1;
-$deferred->($h);
+$disabled_startup_bind->($h);
 is(scalar @opened,0,'disabled startup does not open port');
 is(WIFFI_Collector_Attr('set','Collector','disable','0'),undef,
   'reenable after disabled startup');

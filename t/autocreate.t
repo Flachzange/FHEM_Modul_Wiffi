@@ -20,13 +20,13 @@ sub Log3 { push @logs, $_[2] }
 sub TimeNow { return '2026-10-14 15:00:00' }
 sub readingsSingleUpdate {
   my ($hash, $key, $value) = @_;
-  $hash->{READINGS}{$key}{VAL} = "$value";
+  $hash->{READINGS}{$key} = {VAL => "$value", TIME => TimeNow()};
 }
 sub readingsBeginUpdate { $_[0]{'.updating'} = 1 }
 sub readingsBulkUpdate {
   my ($hash, $key, $value) = @_;
   die "not inside readingsBeginUpdate" unless $hash->{'.updating'};
-  $hash->{READINGS}{$key}{VAL} = "$value";
+  $hash->{READINGS}{$key} = {VAL => "$value", TIME => TimeNow()};
 }
 sub readingsEndUpdate { delete $_[0]{'.updating'} }
 sub CommandDefine {
@@ -58,7 +58,7 @@ sub CommandAttr {
     if $key eq 'IODev';
   return $error if $error;
   $attr{$name}{$key} = $value;
-  AssignIoPort($defs{$name}, $value) if $key eq 'IODev';
+  fhem_setIoDev($defs{$name}, $value) if $key eq 'IODev';
   $on_attr->($name, $key) if $on_attr;
   return undef;
 }
@@ -495,6 +495,28 @@ is($weather->{READINGS}{lux}{VAL}, '1747.2',
 is($weather->{READINGS}{Systeminfo_sec_seit_reset}{VAL}, '123',
   'collision never updates heartbeat');
 
+# Validate effective names even when either or both values are JSON null.
+# No partial update may occur, including heartbeat or existing timestamps.
+$weather->{READINGS}{lux}{TIME}='previous sample';
+for my $values ([undef,'5555'], ['9999',undef], [undef,undef]) {
+  my $null_collision = JSON::PP::encode_json({
+    modultyp=>'weatherman',
+    vars=>[
+      {homematic_name=>'w_lux',value=>$values->[0]},
+      {homematic_name=>'lux',value=>$values->[1]}
+    ],
+    Systeminfo=>{'MAC-Adresse'=>'02:00:00:00:00:06',sec_seit_reset=>999}
+  });
+  my $before = $server->{FRAMES_ERROR};
+  WIFFI_Collector_ProcessFrame($server,$null_collision,'192.0.2.26');
+  is($server->{FRAMES_ERROR},$before+1,'null does not bypass mapped collision');
+  is($server->{FRAMES_OK},2,'null collision never counts as a published frame');
+  is($weather->{READINGS}{lux}{VAL},'1747.2','null collision leaves value intact');
+  is($weather->{READINGS}{lux}{TIME},'previous sample','null collision preserves timestamp');
+  is($weather->{READINGS}{Systeminfo_sec_seit_reset}{VAL},'123',
+    'null collision never publishes a heartbeat');
+}
+
 my $reserved_raw = JSON::PP::encode_json({
   modultyp => 'weatherman',
   vars => [{homematic_name => 'w_state', value => 'bad'}],
@@ -599,6 +621,7 @@ my $null_frame = '{"modultyp":"PULSECOUNTER","vars":['
   .'],"Systeminfo":{"MAC-Adresse":"02:00:00:00:00:08",'
   .'"sec_seit_reset":"11"}}';
 $errors_before = $server->{FRAMES_ERROR};
+$atomic_device->{READINGS}{w_counter2}{TIME}='previous counter sample';
 WIFFI_Collector_ProcessFrame($server, $null_frame, '192.0.2.28');
 is($server->{FRAMES_ERROR}, $errors_before, 'valid null is not counted as error');
 is($server->{FRAMES_OK}, 2, 'valid null frame is counted as delivered');
@@ -606,6 +629,8 @@ is($atomic_device->{READINGS}{w_counter1}{VAL}, '15.200',
   'other measurements update despite null entry');
 is($atomic_device->{READINGS}{w_counter2}{VAL}, '7',
   'previous measurement is retained on null');
+is($atomic_device->{READINGS}{w_counter2}{TIME},'previous counter sample',
+  'valid null retains the previous reading timestamp');
 ok(!exists $atomic_device->{READINGS}{w_counter3},
   'null does not create a missing reading');
 is($atomic_device->{READINGS}{Systeminfo_sec_seit_reset}{VAL}, '11',
@@ -616,12 +641,15 @@ my $null_heartbeat = '{"modultyp":"PULSECOUNTER","vars":['
   .'{"homematic_name":"w_counter1","value":"16.500"}'
   .'],"Systeminfo":{"MAC-Adresse":"02:00:00:00:00:08",'
   .'"sec_seit_reset":null}}';
+$atomic_device->{READINGS}{Systeminfo_sec_seit_reset}{TIME}='previous heartbeat sample';
 WIFFI_Collector_ProcessFrame($server, $null_heartbeat, '192.0.2.28');
 is($server->{FRAMES_OK}, 3, 'null optional heartbeat accepted');
 is($atomic_device->{READINGS}{w_counter1}{VAL}, '16.500',
   'data published when optional heartbeat is null');
 is($atomic_device->{READINGS}{Systeminfo_sec_seit_reset}{VAL}, '11',
   'null heartbeat does not overwrite previous heartbeat');
+is($atomic_device->{READINGS}{Systeminfo_sec_seit_reset}{TIME},'previous heartbeat sample',
+  'valid null heartbeat does not refresh its timestamp');
 
 # Malformed newly discovered frames must not autocreate a logical device.
 $attr{Collector}{autocreate} = 1;
@@ -752,5 +780,35 @@ is($server->{AUTOCREATED}, 0,
 ok(!$defs{WIFFI_020000000001},
   'failed runtime define does not leave a half-configured logical device');
 $init_done = 0;
+
+# Auto-creation callbacks can disable a new device before its first frame.
+for my $hook ('DEFINED','ATTR') {
+  $server=start_case();
+  $attr{Collector}{autocreate}=1;
+  my $name='WIFFI_02000000000E';
+  if ($hook eq 'DEFINED') {
+    $on_define=sub { $attr{$_[0]}{disable}=1 };
+  } else {
+    $on_attr=sub { $attr{$_[0]}{disable}=1 };
+  }
+  my $frame=telegram('02:00:00:00:00:0E','192.0.2.14','777','wiffi-pump');
+  WIFFI_Collector_ProcessFrame($server,$frame,'192.0.2.14');
+  my $new=$defs{$name};
+  is($attr{$name}{disable},1,"$hook hook disabled new device");
+  ok(!exists $new->{READINGS}{w_counter1},"$hook disable blocks first sensor value");
+  ok(!exists $new->{READINGS}{Systeminfo_sec_seit_reset},"$hook disable blocks heartbeat");
+  ok(!exists $new->{PEER} && !exists $new->{MODULTYP}
+    && !exists $new->{LAST_TELEGRAM},"$hook disable prevents learned telemetry internals");
+  is($new->{READINGS}{state}{VAL},'waiting',"$hook disable retains initial state");
+  is_deeply([@{$server}{qw(FRAMES_OK FRAMES_ERROR FRAMES_UNKNOWN)}],[0,0,0],
+    "$hook disable does not count an ignored telegram as success/error/unknown");
+  is($server->{AUTOCREATED},1,"$hook disable keeps one autocreated device");
+  ok($server->{LAST_TELEGRAM},"$hook disable still records collector reception");
+  $on_define=$on_attr=undef;
+  delete $attr{$name}{disable};
+  WIFFI_Collector_ProcessFrame($server,$frame,'192.0.2.14');
+  is($new->{READINGS}{w_counter1}{VAL},'777',"$hook device receives after enable");
+  is($definitions,1,"$hook enable does not create a replacement device");
+}
 
 done_testing();

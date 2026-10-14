@@ -11,6 +11,7 @@ our (%defs, %attr, $init_done, $readingFnAttributes);
 $init_done = 1;
 $readingFnAttributes = '';
 my (@closed, @attr_commands);
+my $io_number = 0;
 sub AttrVal {
   my ($name,$key,$default) = @_;
   return exists $attr{$name}{$key} ? $attr{$name}{$key} : $default;
@@ -29,7 +30,7 @@ require './FHEM/10_WIFFI_DEVICE.pm';
 sub io {
   my ($name) = @_;
   $defs{$name} = {
-    NAME=>$name, TYPE=>'WIFFI_Collector', FRAMES_OK=>0,
+    NAME=>$name, TYPE=>'WIFFI_Collector', NR=>++$io_number, FRAMES_OK=>0,
     FRAMES_ERROR=>0, FRAMES_UNKNOWN=>0, AUTOCREATED=>0
   };
   return $defs{$name};
@@ -49,7 +50,7 @@ sub set_io {
   my $error = WIFFI_DEVICE_Attr('set',$name,'IODev',$value);
   return $error if $error;
   $attr{$name}{IODev} = $value;
-  AssignIoPort($defs{$name},$value);
+  fhem_setIoDev($defs{$name},$value);
   return undef;
 }
 sub CommandAttr {
@@ -169,7 +170,7 @@ is($deferred->{DEF},'C3 02:00:00:00:00:0A',
 is(scalar @attr_commands,$previous_attrs,
   'configDB restore does not create an IODev attribute');
 my $late=io('C3');
-AssignIoPort($deferred,$deferred->{IODevName});
+fhem_setIoDev($deferred,$deferred->{IODevName});
 is($deferred->{IODev},$late,'startup can resolve deferred collector by name');
 is(set_io('Deferred','C3'),undef,'operator can persist IODev after startup');
 $init_done=1;
@@ -182,6 +183,41 @@ is($deferred->{DEF},'02:00:00:00:00:0A',
   'migration preserves MAC-only DEF');
 is($deferred->{IODev},$late,'migration keeps prior IODev');
 is($attr{Deferred}{IODev},'C3','existing persistent assignment is retained');
+
+# Negative controls: the double must reproduce the actual core behaviors
+# that made the previous implementation incorrectly choose another collector.
+my $core_probe = {NAME=>'CoreProbe',TYPE=>'WIFFI_DEVICE'};
+AssignIoPort($core_probe);
+is($core_probe->{IODev},$late,'core double selects the last compatible IO');
+$attr{C1}{disable}=1;
+$core_probe = {NAME=>'CoreDisabledProbe',TYPE=>'WIFFI_DEVICE'};
+AssignIoPort($core_probe,'C1');
+is($core_probe->{IODev},$late,'core double falls back from disabled proposed IO');
+
+$init_done=0;
+my $attr_count = scalar @attr_commands;
+my $unbound = device('RestoredUnbound','02:00:00:00:00:20');
+ok(!exists $unbound->{IODev},'startup with multiple IOs stays unbound');
+ok(!exists $unbound->{IODevMissing},
+  'startup does not invite finish_init to select an arbitrary IO');
+$unbound->{READINGS}{IODev}{VAL}='C2Renamed';
+$unbound->{OLDDEF}=$unbound->{DEF};
+is(WIFFI_DEVICE_Define($unbound,'RestoredUnbound WIFFI_DEVICE 02:00:00:00:00:20'),
+  undef,'MAC-only redefinition accepted without configured owner');
+ok(!exists $unbound->{IODev},'old IODev reading cannot implicitly select owner');
+delete $unbound->{OLDDEF};
+
+my $disabled_owner = device('RestoredDisabled','C1 02:00:00:00:00:21');
+is($disabled_owner->{IODev},$one,'legacy startup retains explicit disabled IO');
+is($disabled_owner->{READINGS}{IODev}{VAL},'C1','IODev reading matches disabled owner');
+is(scalar @attr_commands,$attr_count,'startup does not write persistent attrs');
+is(set_io('RestoredUnbound','C1'),undef,'saved attr can bind after MAC-only restore');
+is($unbound->{IODev},$one,'saved attr uses its disabled IO without fallback');
+$init_done=1;
+my $manual_disabled = device('ManualDisabled','C1 02:00:00:00:00:22');
+is($manual_disabled->{IODev},$one,'explicit manual define also allows disabled IO');
+is($attr{ManualDisabled}{IODev},'C1','manual disabled IO binding is persistent');
+delete $attr{C1}{disable};
 
 # No collector at interactive define: no invented persistent IODev.
 delete $defs{C1}; delete $defs{C2Renamed}; delete $defs{C3};
