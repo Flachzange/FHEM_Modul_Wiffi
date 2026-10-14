@@ -59,7 +59,7 @@
 - Test: large/invalid numeric counters and value precision, string booleans, unchanged values/heartbeat timestamp refresh, event-on-change/update interactions, DbLog effects, and reentrant callbacks.
 - Confirm behavior on a **real test FHEM** and ideally a real WIFFI device before any production recommendation. State exactly what live tests were **not** done.
 - The test command should become a documented `scripts/ci.sh` entry point when this project gains a complete test suite; do not claim that it already exists.
-- CI test doubles and syntax checks are not equivalent to live FHEM integration. Document dedicated real-system evidence and remaining lifecycle scenarios in `docs/fhem-lifecycle-test-matrix.md`; keep issue #4 and related staging verifications explicit.
+- CI test doubles and syntax checks are not equivalent to live FHEM integration. Record confirmed real behavior and **unverified** lifecycle scenarios in `docs/fhem-lifecycle-test-matrix.md`. **Maintainer scope decision (2026-10-14):** exhaustive lifecycle/staging/failure-injection tests are not planned; do not keep or create permanent test-only issues for them. Reassess only when a concrete regression warrants investigation. Do not claim unrun tests passed.
 
 ## WIFFI user-facing behavior and migration
 
@@ -75,7 +75,7 @@ These requirements are **WIFFI-specific**, not inherited from the other modules:
 
 ## WIFFI-specific follow-up responsibilities
 
-- The modules embed English and German FHEM commandref POD sections following FHEM documentation conventions. Keep command anchors and help content synchronized with real setters, attributes and the README; omit implementation TODOs or development-status remarks from user-facing help. `t/commandref.t` checks structural consistency. Separate release verification is described in `docs/release-readiness.md` (issue #8). Issue #9 is closed as implemented; the maintainer confirms live `disable`/`enable` for both module types. Detailed abnormal-lifecycle and HTTP-cancellation checks remain under issue #4.
+- The modules embed English and German FHEM commandref POD sections following FHEM documentation conventions. Keep command anchors and help content synchronized with real setters, attributes and the README; omit implementation TODOs or development-status remarks from user-facing help. `t/commandref.t` checks structural consistency. Separate release verification is described in `docs/release-readiness.md` (issue #8). Issue #9 is closed as implemented; the maintainer confirms live `disable`/`enable` for both module types. Detailed abnormal-lifecycle and HTTP-cancellation cases remain **unverified, but are not scheduled** following the maintainer's explicit scope decision.
 - Issue #10 is the FHEM framework compatibility audit. Its [source-backed audit report](docs/fhem-framework-audit.md) separates confirmed fixes, verified FHEM contracts and real-integration gaps. Reusable findings belong in the generic `AGENTS.md`; WIFFI-specific behavior belongs here. Update both when later source evidence changes.
-- Keep `README.md`, automated tests, the lifecycle matrix and Draft PR #1 aligned with demonstrated behavior; do not merge or call this module production-validated without explicit maintainer approval.
+- Keep `README.md`, automated tests, the lifecycle evidence record and Draft PR #1 aligned with demonstrated behavior and deliberately untested scenarios; do not merge without explicit maintainer approval or call exhaustive lifecycle behavior production-validated. Acceptance of limited real-world checks is **not** permission to mark waived tests as passing.
 
