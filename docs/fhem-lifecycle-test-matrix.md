@@ -42,7 +42,7 @@ All rows are **not yet verified on real FHEM**.
 | L12 | `rereadcfg` | Current collector removed with sockets/clients and recreated exactly once from configDB/file; logical WIFFI devices reconnect and update | Not run |
 | L13 | FHEM restart | Exactly one listener and no stale temporary clients after restart; next valid frame accepted | Not run |
 | L14 | Module `reload` | No unexpected duplicate listeners or stale callbacks; document whether explicit `set reopen` is required for current FHEM | Not run |
-| L15 | EOF/read error/60-s idle/180-s absolute lifetime | Temporary clients removed and `CLIENTS_ACTIVE` reduced; listener remains healthy, other devices continue receiving | Not run |
+| L15 | EOF/read error/60-s idle/180-s absolute lifetime | Temporary clients removed and `CLIENTS_ACTIVE` reduced; `CLIENTS_TIMEOUT` increments on idle/lifetime expiry, whereas `FRAMES_ERROR` increments only for unfinished non-whitespace data discarded on expiry; listener remains healthy | Not run |
 | L16 | Known device remains after a failed listener bind | Last sensor readings and attributes unchanged; recovery doesn't duplicate autocreated devices | Not run |
 | L17 | Reentrant DOIF/notify triggers `set reopen`, `modify`, `delete` or `rename` during a batched TCP read | Old connection discards queued frames on close/modify/delete; stable hash identity allows rename; no stale reading publication or unexpected frame errors | Not run |
 
