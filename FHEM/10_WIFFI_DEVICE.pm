@@ -253,7 +253,8 @@ sub WIFFI_DEVICE_Process {
   for my $reading (keys %{$data->{readings}}) {
     my $name = $reading;
     $name =~ s/\Aw_// if $strip;
-    if ($name eq '' || $name eq 'state' || exists $mapped{$name}) {
+    if ($name eq '' || $name eq 'state' || $name eq 'IODev'
+        || exists $mapped{$name}) {
       Log3($hash, 2, "$hash->{NAME}: WIFFI reading name collision or reserved name: $reading -> $name");
       return 0;
     }
