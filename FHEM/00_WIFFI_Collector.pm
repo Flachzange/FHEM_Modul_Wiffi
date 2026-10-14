@@ -22,10 +22,11 @@ sub WIFFI_Collector_NormalizeMac {
 }
 
 # Keep values as delivered (including large decimals and boolean strings).
-# Reject JSON containers rather than silently losing a reading.
+# JSON null means no new value: omit that reading from this update, not the
+# entire telegram. Reject JSON containers rather than silently losing data.
 sub WIFFI_Collector_ValueText {
   my ($value, $context) = @_;
-  die "$context: missing or null value" unless defined $value;
+  return undef unless defined $value;
   my $kind = ref($value);
   return $value ? 'true' : 'false' if $kind eq 'JSON::PP::Boolean';
   return "$value" if !$kind || $kind eq 'Math::BigInt' || $kind eq 'Math::BigFloat';
@@ -51,6 +52,7 @@ sub WIFFI_Collector_Decode {
   # Decode and validate EVERYTHING before any FHEM reading or heartbeat update.
   # Optional sensor fields may be absent; provided fields must be well-formed.
   my %readings;
+  my %seen_names; # also track names whose value is JSON null
   my $reported_ip;
   for my $index (0 .. $#{$obj->{vars}}) {
     my $var = $obj->{vars}[$index];
@@ -59,21 +61,21 @@ sub WIFFI_Collector_Decode {
     die "vars[$index]: missing or invalid homematic_name"
       unless defined $name && !ref($name)
         && $name =~ /\A[A-Za-z_][A-Za-z0-9_.-]*\z/;
-    die "vars[$index]: duplicate CCU name" if exists $readings{$name};
+    die "vars[$index]: duplicate CCU name" if exists $seen_names{$name};
+    $seen_names{$name} = 1;
     die "vars[$index]: reserved state reading" if $name eq 'state';
-    die "vars[$index]: missing or null value"
-      unless exists $var->{value} && defined $var->{value};
-    # Metadata are optional, but malformed provided identifiers/type hints are not.
+    die "vars[$index]: missing value" unless exists $var->{value};
+    # Optional metadata may be JSON null (unknown); containers are invalid.
     for my $metadata (qw(name type)) {
-      next unless exists $var->{$metadata};
-      die "vars[$index]: invalid $metadata"
-        unless defined $var->{$metadata} && !ref($var->{$metadata});
+      next unless exists $var->{$metadata} && defined $var->{$metadata};
+      die "vars[$index]: invalid $metadata" if ref($var->{$metadata});
     }
 
-    $readings{$name} =
-      WIFFI_Collector_ValueText($var->{value}, "vars[$index]");
-    $reported_ip = $readings{$name}
-      if exists $var->{name} && $var->{name} eq '0';
+    my $text = WIFFI_Collector_ValueText($var->{value}, "vars[$index]");
+    next unless defined $text; # JSON null: preserve existing reading and timestamp
+    $readings{$name} = $text;
+    $reported_ip = $text
+      if defined $var->{name} && $var->{name} eq '0';
   }
 
   for my $key (keys %{$obj->{Systeminfo}}) {
@@ -83,9 +85,10 @@ sub WIFFI_Collector_Decode {
     die "Systeminfo: invalid field name"
       unless $key =~ /\A[A-Za-z_][A-Za-z0-9_.-]*\z/;
     my $name = "Systeminfo_$key";
-    die "Systeminfo: reading name collision" if exists $readings{$name};
-    $readings{$name} =
-      WIFFI_Collector_ValueText($obj->{Systeminfo}{$key}, "Systeminfo");
+    die "Systeminfo: reading name collision" if exists $seen_names{$name};
+    my $text = WIFFI_Collector_ValueText($obj->{Systeminfo}{$key}, "Systeminfo");
+    next unless defined $text; # optional Systeminfo null: no update
+    $readings{$name} = $text;
   }
 
   return {
