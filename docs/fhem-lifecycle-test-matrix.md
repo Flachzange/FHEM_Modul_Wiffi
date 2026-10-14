@@ -2,7 +2,7 @@
 
 **Issue:** [#4](https://github.com/Flachzange/FHEM_Modul_Wiffi/issues/4)  
 **Implementation branch:** `feat/tcp-collector-initial`  
-**Status:** isolated Perl regression tests pass; real FHEM telemetry and WIFFI-pump hardware control have been observed (see below), but **the dedicated listener/lifecycle acceptance matrix L01–L18 has not been executed**. Existing functional observations do not establish the results of lifecycle tests. Do not mark individual lifecycle rows as passed without scenario-specific evidence.
+**Status (2026-10-14):** isolated regression tests pass (8 test files / 955 tests). In the actual FHEM installation, telemetry, manual `reopen`, regular restart with configDB restore and `disable`/`enable` of both module types have been confirmed. **The full L01–L18/D01–D08 staging matrices have not been executed.** Where live reports address only part of a row, they are explicitly labeled *partial*, not fully passed.
 
 ## Inspected reference behavior
 
@@ -14,7 +14,7 @@
 
 ## Observed live FHEM / physical WIFFI functionality (not a lifecycle sign-off)
 
-These observations were recorded during project development; they are **not** evidence of passing the complete socket, `rereadcfg`, `reload`, `modify`, `reopen` or failure-injection scenarios L01–L18.
+These observations were recorded during project development; they do not prove untested socket, `rereadcfg`, `reload`, `modify` or failure-injection scenarios. Later normal-operation confirmations are documented separately below.
 
 | Date | Scope | Observed result | Not established |
 | --- | --- | --- | --- |
@@ -23,24 +23,30 @@ These observations were recorded during project development; they are **not** ev
 | 2026-10-11 | PULSECOUNTER2-LAN (`counter_LAN41`), real FHEM | TCP-derived counters/readings and automatic creation observed on one physical device | Other PULSECOUNTER units, sustained reliability or overall error-free operation |
 | 2026-10-11 | WIFFI-pump 2 (`wiffi_pump2_110`), actual hardware | FHEMWEB `on` and `off` physically switched pump; subsequent `wiffi_pump` readings changed accordingly; `on-for-timer 30` started pump | Precise timer expiration not independently timed; generic `httpGet` and HTTP commands on other device types not field-tested |
 
-## Dedicated lifecycle staging test information (to fill in)
+## Live FHEM evidence and dedicated staging environment
 
 | Item | Actual value |
 | --- | --- |
-| FHEM version / SVN revision | NOT RECORDED |
-| Perl version | NOT RECORDED |
-| Host / platform / configuration backend (file or configDB) | NOT RECORDED |
-| Tested WIFFI collector port(s) | NOT RECORDED |
-| Firmware/model and observed TCP framing | NOT RECORDED |
-| Date of dedicated lifecycle staging run | NOT RUN |
+| FHEM version / SVN revision | Latest Revision **31780**; `fhem.pl` **31759**; `01_FHEMWEB.pm` **31693**; `TcpServerUtils.pm` **31027**; `HttpUtils.pm` **31632**; `configDB.pm` **30792** (maintainer `version` output, 2026-10-14) |
+| Perl version | **5.40.5** (verified by maintainer in FHEM) |
+| Host / platform / configuration backend (file or configDB) | **configDB active**, explicitly confirmed; host/platform details not recorded |
+| Tested WIFFI collector port(s) | **9195**; listener `WIFFI_Collector.9195` observed in `%selectlist` |
+| Firmware/model and observed TCP framing | WIFFI-pump 2 `wiffi_pump2_110`, PULSECOUNTER2-LAN `counter_LAN41`, WEATHERMAN observed; no complete per-device framing characterization in the live test record |
+| Date of dedicated lifecycle staging run | **NOT RUN**; partial normal-operation checks reported on **2026-10-14** |
 
 ## Lifecycle acceptance matrix
 
-All 18 **scenario-specific lifecycle test rows remain unverified** in a real FHEM staging installation. The separate, previously observed functional tests above do not fulfill their acceptance criteria.
+The **complete** lifecycle scenarios remain unverified in staging. The following *partial live evidence* is recorded, but does not establish all conditions of the corresponding acceptance rows:
+
+- **Listener/normal traffic:** `LISTENER_STATUS=listening`, `LISTENER_ERROR` empty, `WIFFI_Collector.9195` present once in `%selectlist`; at one snapshot `CONNECTS=243`, `FRAMES_OK=243`, `FRAMES_ERROR=0`, `CLIENTS_ACTIVE=0`, `CLIENTS_PEAK=2`.
+- **Manual `set WIFFI_Collector reopen`:** maintainer confirms it worked and telemetry/listener remained usable afterward. Does not establish simultaneous-active-client cleanup or a failed-bind recovery scenario.
+- **Normal FHEM restart with configDB:** maintainer confirms modules/devices restored and the collector resumed listening automatically on 9195. Does not prove precise restore ordering, FD/timer teardown or duplicate detection under failure.
+- **`disable`/`enable` on both types:** maintainer confirms successful toggling of `WIFFI_Collector` and `WIFFI_DEVICE`. Does not establish pending-HTTP cancellation, disabled startup, deleteattr, failed bind or detailed socket/selectlist snapshots.
+- **User-visible WIFFI controls and FHEMWEB:** pump on/off and timer startup, PULSECOUNTER `counter`, `reset` and detail-only webinterface link confirmed by maintainer. Reset type/arguments and before/after uptime values were not separately recorded.
 
 | ID | Scenario | Expected behavior and evidence to record | Live status |
 | --- | --- | --- | --- |
-| L01 | Initial FHEM startup and listener bind | `LISTENER_STATUS=listening`, port bound once, `LISTENER_ERROR` empty; one listener `%selectlist` key; level-3 success log | Not run |
+| L01 | Initial FHEM startup and listener bind | `LISTENER_STATUS=listening`, port bound once, `LISTENER_ERROR` empty; one listener `%selectlist` key; level-3 success log | **Partial live:** normal restart/bind and a single listener key confirmed; precise per-startup log/socket evidence missing |
 | L02 | Logical `WIFFI_DEVICE` restored before collector | Existing definition and MAC survive, telemetry starts after collector binds, no extra device created | Not run |
 | L03 | Port unavailable at initial define/startup | Definition survives, `LISTENER_STATUS=error`, reason visible in `LISTENER_ERROR` and level-1 log; no stale socket key | Not run |
 | L04 | Port freed, `set WIFFI_Collector reopen` | Fresh bind at configured port, status `listening`, error cleared; no duplicate listener | Not run |
@@ -52,7 +58,7 @@ All 18 **scenario-specific lifecycle test rows remain unverified** in a real FHE
 | L10 | `rename` of collector and rename back | Live TCP listener selectlist key and temporary parent references follow name; existing `WIFFI_DEVICE` definitions refer to new collector; no sensor readings or user attributes changed | Not run |
 | L11 | `undefine` collector | Listener and all temporary TCP clients removed; no open socket, selectlist entries, or timeout timers | Not run |
 | L12 | `rereadcfg` | Current collector removed with sockets/clients and recreated exactly once from configDB/file; logical WIFFI devices reconnect and update | Not run |
-| L13 | FHEM restart | Exactly one listener and no stale temporary clients after restart; next valid frame accepted | Not run |
+| L13 | FHEM restart | Exactly one listener and no stale temporary clients after restart; next valid frame accepted | **Partial live:** successful configDB restore, listener rebinding and subsequent operation confirmed; complete client/FD evidence missing |
 | L14 | Module `reload` | No unexpected duplicate listeners or stale callbacks; document whether explicit `set reopen` is required for current FHEM | Not run |
 | L15 | EOF/read error/60-s idle/180-s absolute lifetime | Temporary clients removed and `CLIENTS_ACTIVE` reduced; `CLIENTS_TIMEOUT` increments on idle/lifetime expiry, whereas `FRAMES_ERROR` increments only for unfinished non-whitespace data discarded on expiry; listener remains healthy | Not run |
 | L16 | Known device remains after a failed listener bind | Last sensor readings and attributes unchanged; recovery doesn't duplicate autocreated devices | Not run |
@@ -77,20 +83,20 @@ From the FHEM host's shell, optionally verify the actual TCP listener using `ss 
 
 `t/reentrancy.t` additionally injects synchronous Reading and DEFINED/ATTR callback actions (listener reopen/modify/delete, client and logical device delete/modify, plus identity-preserving renames). The tests use real WIFFI modules and FHEM contract doubles; actual DOIF/notify behavior, socket lifecycle, and configDB still need validation. 
 
-`t/lifecycle.t` checks callback registration, bind failure and recovery, repeated failure logging, manual reopen, active-child cleanup, failed `CommandDelete` / partial `DeleteFn` cleanup with no false listener recovery, manual retry, correct selectlist key on `modify` and `rename`, deferred startup rename, undef/redefine behavior, and the isolated collector-disable contract (including startup and failed re-enable). `t/transport.t` checks connection limits and timeouts. All seven tests run under isolated FHEM contract doubles, not a full FHEM runtime; they do **not** establish configDB persistence, physical socket handles or select-list lifetime on the target system.
+`t/lifecycle.t` checks callback registration, bind failure and recovery, repeated failure logging, manual reopen, active-child cleanup, failed `CommandDelete` / partial `DeleteFn` cleanup with no false listener recovery, manual retry, correct selectlist key on `modify` and `rename`, deferred startup rename, undef/redefine behavior, and the isolated collector-disable contract (including startup and failed re-enable). `t/transport.t` checks connection limits and timeouts. All eight tests run under isolated FHEM contract doubles, not a full FHEM runtime; they do **not** establish configDB persistence, physical socket handles or select-list lifetime on the target system.
 
 ## FHEM `disable` integration acceptance (Issue #9)
 
-The `disable` contract now has isolated regression tests in `t/lifecycle.t`, `t/autocreate.t` and `t/set.t`, but **none of the following real-FHEM scenarios has been executed**. These are additional checks, not a revision of the still-unverified L01–L18 matrix above.
+The `disable` contract has isolated regression tests in `t/lifecycle.t`, `t/autocreate.t` and `t/set.t`. The maintainer additionally confirms successful real-FHEM `disable`/`enable` of both module types (2026-10-14). **The detailed D01–D08 scenario-specific checks are still incomplete**; the confirmations are partial evidence only.
 
 | ID | Scenario | Expected live observation | Live status |
 | --- | --- | --- | --- |
 | D01 | FHEM startup with `attr WIFFI_Collector disable 1` already saved | Definition restored; no TCP bind, selectlist listener or accepted child | Not run |
-| D02 | `disable 1` while listener and TCP clients are active | Listener socket and temporary clients removed; timeout timers canceled; no subsequent telemetry; logical-device readings retained | Not run |
-| D03 | `disable 0`, repeated toggles, `deleteattr disable` | Port opened exactly once, TCP messages resume; no duplicate listener | Not run |
+| D02 | `disable 1` while listener and TCP clients are active | Listener socket and temporary clients removed; timeout timers canceled; no subsequent telemetry; logical-device readings retained | **Partial live:** collector disable/enable worked; active-client/FD/timer details not checked |
+| D03 | `disable 0`, repeated toggles, `deleteattr disable` | Port opened exactly once, TCP messages resume; no duplicate listener | **Partial live:** enable worked; repeated toggles, `deleteattr` and exact listener count at transition unrecorded |
 | D04 | `set ... reopen` while Collector disabled; enable with occupied TCP port | Reopen refused while disabled; failed bind diagnosed; manual recovery possible after releasing port | Not run |
 | D05 | `modify` and `rereadcfg` while Collector disabled | No premature bind; modified configured port respected when enabled; no stale clients | Not run |
-| D06 | Disable a known WIFFI_DEVICE while another device continues | Disabled device readings, heartbeat and type remain unchanged; enabled device keeps updating; no duplicate autocreate | Not run |
+| D06 | Disable a known WIFFI_DEVICE while another device continues | Disabled device readings, heartbeat and type remain unchanged; enabled device keeps updating; no duplicate autocreate | **Partial live:** device disable/enable worked; other-device/reading-timestamp details not separately recorded |
 | D07 | Disabled WIFFI_DEVICE HTTP control and outstanding asynchronous request | All commands refused, in-flight request canceled, late callback inert; `disable 0` restores control | Not run |
 | D08 | `deleteattr <WIFFI_DEVICE> disable` and re-enable after FHEM restart | Next valid telegram updates original device; no stale heartbeat/peer or extra device | Not run |
 
