@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use Test::More;
 use lib 't/lib';
-our (%defs, @calls, @closed, @logs, $throw_http);
+our (%defs, %attr, @calls, @closed, @logs, $throw_http);
 sub HttpUtils_NonblockingGet {
   my ($param) = @_;
   die "synthetic HTTP initiation failure" if $throw_http;
@@ -11,12 +11,17 @@ sub HttpUtils_NonblockingGet {
 }
 sub HttpUtils_Close { push @closed, $_[0] }
 sub Log3 { push @logs, $_[2] }
+sub AttrVal {
+  my ($name, $key, $default) = @_;
+  return exists $attr{$name}{$key} ? $attr{$name}{$key} : $default;
+}
 sub readingsSingleUpdate { $_[0]{READINGS}{$_[1]}{VAL} = $_[2] }
 require './FHEM/00_WIFFI_Collector.pm';
 require './FHEM/10_WIFFI_DEVICE.pm';
 
 sub init {
   %defs = ();
+  %attr = ();
   @calls = ();
   @closed = ();
   @logs = ();
@@ -37,6 +42,8 @@ sub init {
 my %module;
 WIFFI_DEVICE_Initialize(\%module);
 is($module{SetFn}, 'WIFFI_DEVICE_Set', 'SetFn registered on logical devices');
+is($module{AttrFn}, 'WIFFI_DEVICE_Attr', 'AttrFn registered on logical devices');
+like($module{AttrList}, qr/disable:0,1/, 'device offers disable attribute');
 
 my $device = init();
 my $err = WIFFI_DEVICE_Set($device, 'Pump', 'on');
@@ -194,5 +201,51 @@ $defs{RenamedPump}=$device;
 $pending->{code}=200;
 $pending->{callback}->($pending,'','');
 ok(!exists $device->{'.WIFFI_HTTP'}, 'renamed device callback handled');
+
+
+# Disabled device must not send an HTTP command, cancel an in-flight request
+# and must ignore its late callback without updating state.
+$device = init();
+my $initial_calls = scalar @calls;
+like(WIFFI_DEVICE_Attr('set','Pump','disable','invalid'),qr/disable 0\|1/,
+  'reject invalid disable value');
+is(WIFFI_DEVICE_Set($device,'Pump','on'),undef,'fresh pump request queued');
+my $during_disable = $calls[-1];
+is(WIFFI_DEVICE_Attr('set','Pump','disable','1'),undef,
+  'device disable attribute transition succeeds');
+$attr{Pump}{disable}=1;
+is($closed[-1],$during_disable,'disable closes pending HTTP request');
+ok(!exists $device->{'.WIFFI_HTTP'},'disable clears pending command');
+like(WIFFI_DEVICE_Set($device,'Pump','on'),qr/disabled/,
+  'on rejected while device disabled');
+like(WIFFI_DEVICE_Set($device,'Pump','off'),qr/disabled/,
+  'off rejected while device disabled');
+like(WIFFI_DEVICE_Set($device,'Pump','on-for-timer',30),qr/disabled/,
+  'timer rejected while device disabled');
+like(WIFFI_DEVICE_Set($device,'Pump','httpGet','/'),qr/disabled/,
+  'generic httpGet rejected while disabled');
+is(scalar @calls,$initial_calls+1,'disabled commands send no HTTP requests');
+my $prior_logs = scalar @logs;
+$during_disable->{callback}->($during_disable,'closed','');
+is(scalar @logs,$prior_logs,'late disabled HTTP callback is ignored');
+is(WIFFI_DEVICE_Attr('set','Pump','disable','0'),undef,
+  'explicit device enable accepted');
+$attr{Pump}{disable}=0;
+is(WIFFI_DEVICE_Set($device,'Pump','on'),undef,
+  'enabled device can dispatch HTTP again');
+my $after_enable = $calls[-1];
+$after_enable->{code}=200;
+$after_enable->{callback}->($after_enable,'','');
+is(WIFFI_DEVICE_Attr('set','Pump','disable','1'),undef,
+  'disable device second time');
+$attr{Pump}{disable}=1;
+is(WIFFI_DEVICE_Attr('del','Pump','disable'),undef,
+  'deleteattr disable accepted');
+delete $attr{Pump}{disable};
+is(WIFFI_DEVICE_Set($device,'Pump','off'),undef,
+  'device works again after deleting disable attr');
+my $after_deleteattr = $calls[-1];
+$after_deleteattr->{code}=200;
+$after_deleteattr->{callback}->($after_deleteattr,'','');
 
 done_testing();
