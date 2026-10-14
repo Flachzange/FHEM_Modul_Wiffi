@@ -7,7 +7,7 @@ use Errno qw(EAGAIN EWOULDBLOCK);
 use TcpServerUtils;
 use JSON::PP ();
 use Time::HiRes ();
-use vars qw(%defs $init_done $readingFnAttributes);
+use vars qw(%defs %selectlist $init_done $readingFnAttributes);
 
 # Parser helpers live here so an installed FHEM module needs no additional .pm file.
 sub WIFFI_Collector_NormalizeMac {
@@ -141,7 +141,60 @@ sub WIFFI_Collector_Initialize {
   $hash->{DefFn} = 'WIFFI_Collector_Define';
   $hash->{UndefFn} = 'WIFFI_Collector_Undef';
   $hash->{ReadFn} = 'WIFFI_Collector_Read';
+  $hash->{SetFn} = 'WIFFI_Collector_Set';
+  $hash->{RenameFn} = 'WIFFI_Collector_Rename';
   $hash->{AttrList} = 'autocreate:0,1 logRejectedPayload:0,1 allowfrom '.$readingFnAttributes;
+}
+
+# Start and stop the listener through one path for initial define, modify
+# and explicit recovery. TcpServerUtils owns %selectlist/socket registration.
+# In the inspected FHEM TcpServer_Close implementation, the closed socket
+# remains in SERVERSOCKET; remove stale metadata before a future reopen.
+sub WIFFI_Collector_CloseListener {
+  my ($hash, $reason) = @_;
+  my $name = $hash->{NAME};
+  RemoveInternalTimer($hash); # also cancels a deferred initial bind
+
+  # Temporary children must be deleted while the parent is still defined,
+  # so their UndefFn can decrement CLIENTS_ACTIVE and cancel timeout timers.
+  for my $client_name (keys %defs) {
+    my $client = $defs{$client_name};
+    next unless $client && $client->{TYPE} eq 'WIFFI_Collector'
+      && defined $client->{SNAME} && $client->{SNAME} eq $name;
+    my $err = CommandDelete(undef, $client_name);
+    Log3($hash, 1, "$name: unable to delete TCP client $client_name: $err")
+      if defined $err && length $err;
+  }
+  if (defined $hash->{SERVERSOCKET}) {
+    TcpServer_Close($hash);
+    Log3($hash, 3, "$name: WIFFI listener closed".
+      (defined $reason ? " ($reason)" : ''));
+  }
+  delete @{$hash}{qw(SERVERSOCKET FD PORT stacktrace)};
+  $hash->{CLIENTS_ACTIVE} = 0;
+  $hash->{LISTENER_STATUS} = 'stopped';
+  return;
+}
+
+sub WIFFI_Collector_OpenListener {
+  my ($hash) = @_;
+  my $name = $hash->{NAME};
+  my $port = $hash->{TCP_PORT};
+  my $err = TcpServer_Open($hash, $port, 'global');
+  if ($err) {
+    # TcpServer_Open can leave SERVERSOCKET defined but false after a
+    # failed bind, and it updates FHEM's state reading before binding.
+    delete @{$hash}{qw(SERVERSOCKET FD PORT stacktrace)};
+    $hash->{LISTENER_STATUS} = 'error';
+    $hash->{LISTENER_ERROR} = "$err";
+    Log3($hash, 1, "$name: WIFFI listener could not bind TCP port ".
+      "$port: $err; use 'set $name reopen' after correcting the cause");
+    return $err;
+  }
+  $hash->{LISTENER_STATUS} = 'listening';
+  $hash->{LISTENER_ERROR} = '';
+  Log3($hash, 3, "$name: WIFFI listener listening on TCP port $port");
+  return undef;
 }
 
 sub WIFFI_Collector_Define {
@@ -150,6 +203,11 @@ sub WIFFI_Collector_Define {
   return 'Usage: define <name> WIFFI_Collector <tcp-port>'
     unless defined $port && $port =~ /\A[0-9]{1,5}\z/
       && $port >= 1 && $port <= 65535;
+
+  # FHEM invokes DefFn on modify with OLDDEF set, reusing the same hash.
+  # Reject invalid port arguments BEFORE tearing down a healthy listener.
+  WIFFI_Collector_CloseListener($hash, 'modify')
+    if exists $hash->{OLDDEF} || defined $hash->{SERVERSOCKET};
 
   $hash->{TCP_PORT} = $port;
   $hash->{MAX_FRAME} = 262144;
@@ -164,16 +222,60 @@ sub WIFFI_Collector_Define {
   $hash->{MAX_CLIENTS} = 16;
   $hash->{CLIENT_IDLE_TIMEOUT} = 60;
   $hash->{CLIENT_MAX_LIFETIME} = 180;
+  $hash->{LISTENER_STATUS} = 'stopped';
+  $hash->{LISTENER_ERROR} = '';
 
   if ($init_done) {
-    return TcpServer_Open($hash, $port, 'global');
+    # Preserve the defined collector on a failed bind so an operator can
+    # inspect LISTENER_ERROR and recover with set <collector> reopen.
+    WIFFI_Collector_OpenListener($hash);
+    return undef;
   }
   InternalTimer(0, sub {
     return unless $defs{$name} && $defs{$name} == $hash;
-    my $err = TcpServer_Open($hash, $port, 'global');
-    Log3($hash, 1, $err) if $err;
+    WIFFI_Collector_OpenListener($hash);
   }, $hash, 0);
   return undef;
+}
+
+sub WIFFI_Collector_Set {
+  my ($hash, $name, $cmd, @args) = @_;
+  return 'Unknown argument '.($cmd // '').', choose one of reopen'
+    unless defined $cmd && $cmd eq 'reopen';
+  return 'Usage: set <collector> reopen' if @args;
+  WIFFI_Collector_CloseListener($hash, 'manual reopen');
+  my $err = WIFFI_Collector_OpenListener($hash);
+  return $err if $err;
+  return undef;
+}
+
+# FHEM renames the device in %defs before calling RenameFn($new,$old).
+# Migrate the listener selectlist key and internal references in place;
+# interrupting an active listener is unnecessary.
+sub WIFFI_Collector_Rename {
+  my ($new, $old) = @_;
+  my $hash = $defs{$new};
+  return unless $hash && $hash->{TYPE} eq 'WIFFI_Collector';
+  my $port = $hash->{PORT};
+  if (defined $hash->{SERVERSOCKET} && defined $port
+      && exists $selectlist{"$old.$port"}) {
+    $selectlist{"$new.$port"} = delete $selectlist{"$old.$port"};
+  }
+  for my $device (values %defs) {
+    next unless $device && $device->{TYPE};
+    if ($device->{TYPE} eq 'WIFFI_Collector'
+        && defined $device->{SNAME} && $device->{SNAME} eq $old) {
+      $device->{SNAME} = $new;
+    } elsif ($device->{TYPE} eq 'WIFFI_DEVICE'
+        && ($device->{COLLECTOR} // '') eq $old) {
+      $device->{COLLECTOR} = $new;
+      $device->{DEF} =~ s/\A\Q$old\E(?=\s)/$new/
+        if defined $device->{DEF};
+    }
+  }
+  Log3($hash, 3, "$new: WIFFI collector renamed from $old; ".
+    "client and logical-device references updated");
+  return;
 }
 
 # One timeout timer per temporary connection, scheduled on accept and then
@@ -217,13 +319,8 @@ sub WIFFI_Collector_Undef {
     }
     return TcpServer_Close($hash);
   }
-  for my $name (keys %defs) {
-    my $client = $defs{$name};
-    next unless $client->{TYPE} eq 'WIFFI_Collector'
-      && defined $client->{SNAME} && $client->{SNAME} eq $hash->{NAME};
-    CommandDelete(undef, $name);
-  }
-  return TcpServer_Close($hash);
+  WIFFI_Collector_CloseListener($hash, 'undefine');
+  return undef;
 }
 
 sub WIFFI_Collector_Read {
