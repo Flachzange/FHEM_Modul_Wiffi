@@ -39,6 +39,7 @@ This repository develops an event-driven FHEM integration for the classic STALL 
 - Preserve device values without undocumented rounding, unit conversion, clamping, or zero substitution. This is especially important for large PULSECOUNTER counters, precision, `type:number` values encoded as strings, and `type:boolean` values encoded as `"false"`/`"true"`.
 - Reject or explicitly surface malformed entries, missing required structure, duplicate names, unsupported container types and incompatible schema changes without publishing partial telegrams. JSON `null` for a present sensor value or optional Systeminfo field means **no new value**: retain the existing reading/timestamp and process other valid entries; an absent optional measurement is not an error. Do not invent mandatory sensor fields without protocol evidence.
 - Only add device-specific rules when required by independently verified device behavior; keep the core parser generic.
+- Treat the `MODULTYP` INTERNAL as the **latest successfully accepted telegram type**, not a persistent device identity. A valid type change is **allowed**, logged on FHEM level 3, and must immediately update which type-specific `SetFn` commands are offered. Do not reject a frame, add persistence or count a frame error solely for changing `modultyp`. The first valid telegram after startup or explicit `modify` establishes the type afresh; never silently change existing `stateFormat`/`devStateIcon` user attributes during a type change.
 
 ## TCP and framing contract
 
