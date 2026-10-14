@@ -545,7 +545,11 @@ sub WIFFI_Collector_ProcessFrame {
   my $device = $matches[0];
   # A disabled logical device keeps its identity but receives no telemetry;
   # this is deliberate, not an unknown device or malformed frame.
-  return 1 if $device && AttrVal($device->{NAME}, 'disable', 0) eq '1';
+  if ($device && AttrVal($device->{NAME}, 'disable', 0) eq '1') {
+    # Disabling a logical device does not stop valid collector reception.
+    $server->{LAST_TELEGRAM} = TimeNow();
+    return 1;
+  }
   if ($device && defined $device->{PEER} && $device->{PEER} ne $peer) {
     $server->{FRAMES_ERROR}++;
     WIFFI_Collector_LogRejected($server, $peer,
