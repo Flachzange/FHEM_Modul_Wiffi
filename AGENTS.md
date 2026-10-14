@@ -2,11 +2,11 @@
 
 This is the reusable foundation for coding agents developing FHEM Perl modules. Apply it to code, tests, issues, reviews, documentation and releases. Prefer a small, idiomatic, evidence-driven implementation.
 
-**Load project rules as well:** Before working in any repository, read any applicable root-level `AGENTS-*.md` supplements (for example, `AGENTS-WIFFI.md`) and apply them alongside this file. Those additional filenames are **not assumed to be loaded automatically** by coding agents. Project-specific requirements belong in the supplement; generic FHEM framework guidance belongs here. For a conflict about verified FHEM behavior, check core sources and reconcile the instructions rather than silently overriding a framework requirement.
+**Load project rules as well:** Before working in any repository, read any applicable root-level `AGENTS-*.md` supplements and apply them alongside this file. Those additional filenames are **not assumed to be loaded automatically** by coding agents. Project-specific requirements belong in the supplement; generic FHEM framework guidance belongs here. For a conflict about verified FHEM behavior, check core sources and reconcile the instructions rather than silently overriding a framework requirement.
+
 ## Source of truth
 
-- Treat the current files on the active repository branch as authoritative. Inspect the actual module sources, relevant tests, CI and documentation; never treat cached copies, previous chats or generated artifacts as current code.
-- Read current code and trace all affected paths before editing. Do not use old branches, generated archives, chat excerpts, cached copies, or prior releases as authoritative code.
+- Treat the current files on the active repository branch as authoritative. Inspect the relevant module sources, tests, CI and documentation and trace affected paths before editing. Do not use old branches, generated archives, chat excerpts, cached copies or prior releases as authoritative code.
 - Verify the repository's actual module types, callback prefixes, licensing and distribution layout before introducing changes. Preserve existing public interfaces unless an explicit change is approved.
 
 ## Evidence and communication
@@ -30,7 +30,7 @@ This is the reusable foundation for coding agents developing FHEM Perl modules. 
 ## FHEM runtime engineering rules
 
 - Verify uncertain FHEM behavior against current FHEM source/commandref. Never invent attribute semantics, callbacks, event rules, TCP helpers, or lifecycle guarantees.
-- Follow the complete called-framework path, not just our wrapper: as applicable: `TcpServer_Open`, `TcpServer_Accept`, `TcpServer_Close`, `HttpUtils_NonblockingGet`, `CommandDefine`, `CommandAttr`, `CommandDelete`, `InternalTimer`, `RemoveInternalTimer`, and reading-update functions.
+- Follow the applicable framework call path, not just the module wrapper: `TcpServer_Open`, `TcpServer_Accept`, `TcpServer_Close`, `HttpUtils_NonblockingGet`, `CommandDefine`, `CommandAttr`, `CommandDelete`, `InternalTimer`, `RemoveInternalTimer`, and reading-update functions.
 - Record the inspected FHEM source revision/date and relevant side effects (return values, events, logging, timers, cleanup, security) in a PR when these functions matter.
 - Treat `$hash->{STATE}` and public readings as *presentations*, not authoritative transient socket/lifecycle state. FHEM can apply `stateFormat` or restore stale readings. Keep transient ownership/state in dedicated internals.
 - Update authoritative internal state **before** publishing FHEM readings or events: event processing may reenter module callbacks.
@@ -84,7 +84,7 @@ Before opening an issue **or recommending a defensive change**, inspect the curr
 
 **Required after every implementation, bug fix, refactor, test change, or documentation update, before reporting the task as finished.** A green CI run and review of only changed lines are not sufficient. Take a separate, critical review pass against the **current branch head after the change**; the goal is to uncover design and integration weaknesses, not merely to confirm the implementation.
 
-1. **Review the complete implementation, not just the diff.** Re-read all relevant FHEM modules and inspect applicable tests, fixtures, CI, `README.md`, commandref/docs and this `AGENTS.md`. Trace callers/callees end-to-end, including relevant code untouched by the current issue.
+1. **Review the complete implementation, not just the diff.** Re-read all relevant FHEM modules and inspect applicable tests, fixtures, CI, `README.md`, commandref/docs, this `AGENTS.md` and applicable `AGENTS-*.md` supplements. Trace callers/callees end-to-end, including relevant code untouched by the current issue.
 2. **Audit coherence, straightforwardness, and maintainability.** Challenge the architecture and separation of module responsibilities, data flow, shared invariants, names, API signatures, value semantics, INTERNALS vs. Readings, defaults, error/log levels and code style. Identify duplicated or contradictory logic/state, dead/obsolete code, unnecessary helpers, workarounds, inconsistent conventions, misleading comments, magic values and overengineering. Prefer one clear path to parallel special cases. Challenge each defensive branch: which verified requirement or realistic failure does it address, and could the same behavior be achieved more simply?
 3. **Check FHEM and Perl conventions against evidence.** Verify callback signatures/ownership and lifecycle (`define`, `modify`, `rename`, `undef`, `rereadcfg`, restart), `AttrList`/`SetFn`, applicable `TcpServerUtils`/`HttpUtils`, `%defs`/`%selectlist`, return values, timer cleanup, nonblocking I/O, Reading/state events, DbLog and reentrant callbacks. For uncertain framework behavior inspect actual FHEM source rather than treating guesses as established rules.
 4. **Actively seek realistic failure modes and regressions.** Trace valid, malformed, missing, optional and null values; relevant size/resource limits; device identity and lifecycle changes; meaningful network failures, reentrant callbacks and shutdown. Look for incorrect resource ownership, extra events/database writes, security/privacy mistakes and missing or inconsistent error logs. Confirm older features still work with the new change.
