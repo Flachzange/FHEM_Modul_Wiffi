@@ -11,6 +11,31 @@ is(WIFFI_Collector_NormalizeMac('DE:AD:BE:EF:FE:01'),
    'DE:AD:BE:EF:FE:01', 'PULSECOUNTER MAC accepted');
 ok(!defined WIFFI_Collector_NormalizeMac('deadbeef'), 'invalid MAC rejected');
 
+# Both FHEM definition spellings and incoming Systeminfo MACs use this helper.
+for my $variant (
+  '02:AA:BB:CC:DD:0F', '02:aa:bb:cc:dd:0f',
+  '02AABBCCDD0F', '02aabbccdd0f'
+) {
+  is(WIFFI_Collector_NormalizeMac($variant), '02:AA:BB:CC:DD:0F',
+    "both MAC formats canonicalize identically: $variant");
+}
+is(WIFFI_Collector_NormalizeMac('2:aa:bb:cc:dd:f'),
+  '02:AA:BB:CC:DD:0F', 'legacy one-digit colon-separated octets still accepted');
+for my $invalid (
+  '02AABBCCDD0', '02AABBCCDD0FF', '02AABBCCDD0G',
+  '02AA:BBCCDD0F', '02-AA-BB-CC-DD-0F',
+  '02:AA:BB:CC:DD:', '02:AA:BB:CC:DD:0FF',
+  '02AABBCCDD0F ', ' 02AABBCCDD0F', '02AABBCCDD0F00',
+  '02AABBCCDD0F:'
+) {
+  ok(!defined WIFFI_Collector_NormalizeMac($invalid),
+    "invalid, mixed or ambiguous MAC rejected: $invalid");
+}
+my $unseparated_json = '{"modultyp":"wiffi-pump","vars":[],"Systeminfo":{"MAC-Adresse":"02aabbccdd0f"}}';
+is(WIFFI_Collector_Decode($unseparated_json)->{mac}, '02:AA:BB:CC:DD:0F',
+  'colon-free MAC in a telegram uses the same canonical identity');
+
+
 my $raw = '{"modultyp":"PULSECOUNTER","vars":['
   .'{"name":"0","homematic_name":"w_counterIP","value":"192.168.5.28"},'
   .'{"name":"11","homematic_name":"w_counter1","type":"number","value":689323.62},'
