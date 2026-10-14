@@ -132,22 +132,41 @@ The collector records successful auto-creations in the `AUTOCREATED` internal, a
 
 The WiFFI devices need to push TCP/JSON to FHEM's IP address on port 9192. **Do not change all devices at once**; initially test one device and keep the established Node-RED integrations until proven reliable.
 
-Manual definition without auto-create is also possible. New devices use
-a MAC-only `DEF`, with the collector selected through standard FHEM `IODev`
-(synthetic example MAC):
+Manual definition without auto-create is also possible. To select a
+specific collector **directly when creating a device**, use:
 
 ```text
-define WIFFI_PUMP2 WIFFI_DEVICE 02:00:00:00:00:01
-attr WIFFI_PUMP2 IODev WIFFI_Collector
+define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector B4:E6:2D:17:DB:07
+save
 ```
 
-The compact MAC `020000000001` works as well; the normalized `MAC`
-INTERNAL is always uppercase, colon-separated. With exactly one available
-collector, FHEM can find it via `AssignIoPort` and the collector's `Clients`
-registration. **Explicitly set `IODev` when multiple collectors exist.**
-Autocreate always assigns the actual receiving collector as a persistent
-`IODev` attribute and stores only the MAC in `DEF`. FHEM also maintains
-its own `IODev` Reading as part of the standard IO mechanism.
+For a new interactive `define`, FHEM stores **only the MAC in `DEF`**
+and our module creates the persistent `IODev=WIFFI_Collector` attribute
+through FHEM's standard `CommandAttr` mechanism. You do not need a
+separate `attr` command.
+
+The shorter form also works:
+
+```text
+define WIFFI_PUMP2 WIFFI_DEVICE B4:E6:2D:17:DB:07
+save
+```
+
+If **exactly one active WIFFI_Collector** exists when this new device is
+defined, its `IODev` attribute is likewise set automatically. If
+multiple collectors exist, the MAC-only definition is left unbound
+instead of assigning a possibly wrong collector; specify the collector
+in `define`, or set `attr WIFFI_PUMP2 IODev WIFFI_Collector` afterward.
+If there is no collector yet, the IODev attribute can be set once one
+has been created.
+
+A MAC can also be entered as exactly 12 hexadecimal digits without
+colons (e.g. `B4E62D17DB07`). The normalized `MAC` INTERNAL remains
+uppercase with colons. Both supported manual define forms converge to
+the same **MAC-only DEF + persistent IODev attribute**, which a later
+`save` also stores in configDB. Autocreate persists the receiving
+collector in the same way. FHEM additionally keeps its own `IODev`
+INTERNAL and Reading.
 
 **Migration for existing devices** (same device name and Readings, no deletion
 or recreated FUUID): old definitions such as
@@ -168,7 +187,7 @@ and appropriate collector. This explicit migration also works with configDB:
 A `modify` invalidates the previously learned TCP peer, so the device
 needs another telegram before its direct HTTP commands work again.
 Do **not** delete/redefine the device just to change the definition.
-Nothing automatically rewrites existing manual definitions during an update.
+During configDB/FHEM startup, existing definitions are loaded without automatically writing attributes or changing their stored DEF; the automatic IODev persistence applies to **new interactive definitions**, not passive configuration restoration.
 A collector rename updates matching `IODev` attributes and any remaining
 legacy collector prefix in `DEF`.
 
