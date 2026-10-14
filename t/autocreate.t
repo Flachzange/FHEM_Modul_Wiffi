@@ -120,6 +120,12 @@ ok(!exists $attr{WIFFI_020000000001}{devStateIcon},
 WIFFI_Collector_ProcessFrame($server,
   telegram('2:0:0:0:0:1', '192.0.2.21', '12.750'), '192.0.2.21');
 is($definitions, 1, 'normalized MAC does not cause a duplicate');
+WIFFI_Collector_ProcessFrame($server,
+  telegram('020000000001', '192.0.2.21', '12.755'), '192.0.2.21');
+is($definitions, 1, 'colon-free incoming MAC matches the existing device');
+is($device->{READINGS}{w_counter1}{VAL}, '12.755',
+  'existing device receives telegram addressed by colon-free MAC');
+is($server->{FRAMES_ERROR}, 0, 'colon-free MAC is not treated as an identity conflict');
 $attr{WIFFI_020000000001}{room} = 'Energie';
 WIFFI_Collector_ProcessFrame($server,
   telegram('02:00:00:00:00:01', '192.0.2.21', '12.760'), '192.0.2.21');
@@ -174,9 +180,11 @@ is($device->{PEER}, '192.0.2.21', 'last verified peer not changed');
 # the observed sender identity. This is the explicit recovery path for DHCP.
 $device->{OLDDEF} = $device->{DEF};
 my $modify_error = WIFFI_DEVICE_Define($device,
-  'MyPulseCounter WIFFI_DEVICE Collector 02:00:00:00:00:01');
+  'MyPulseCounter WIFFI_DEVICE Collector 020000000001');
 delete $device->{OLDDEF};
 is($modify_error, undef, 'explicit modify accepted');
+is($device->{MAC}, '02:00:00:00:00:01',
+   'colon-free modify keeps the same canonical MAC and logical device');
 ok(!defined $device->{PEER}, 'modify clears previously learned peer');
 WIFFI_Collector_ProcessFrame($server,
   telegram('02:00:00:00:00:01', '192.0.2.22', '15'), '192.0.2.22');
