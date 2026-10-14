@@ -302,6 +302,8 @@ like(WIFFI_DEVICE_Set($device,'Pump','off'),qr/disabled/,
   'off rejected while device disabled');
 like(WIFFI_DEVICE_Set($device,'Pump','on-for-timer',30),qr/disabled/,
   'timer rejected while device disabled');
+like(WIFFI_DEVICE_Set($device,'Pump','reset'),qr/disabled/,
+  'reset rejected while device disabled');
 like(WIFFI_DEVICE_Set($device,'Pump','httpGet','/'),qr/disabled/,
   'generic httpGet rejected while disabled');
 $device->{MODULTYP} = 'PULSECOUNTER';

@@ -228,7 +228,9 @@ devices. The setter does not synthesize a successful reboot reading: the
 next accepted telemetry is authoritative. In particular,
 `Systeminfo_sec_seit_reset` should begin again at a small value after the
 device reconnects. A successful HTTP response only confirms request handling,
-not that the reboot completed.
+not that the reboot completed. This `reset` setter is **only a restart**;
+it is deliberately distinct from the destructive vendor `factory` command,
+which is not exposed as a named setter.
 
 ### PULSECOUNTER counter correction
 

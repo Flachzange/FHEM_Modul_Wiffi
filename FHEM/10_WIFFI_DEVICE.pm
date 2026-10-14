@@ -285,7 +285,9 @@ sub WIFFI_DEVICE_Process {
       Restart the WIFFI using the documented <code>/?reset:</code> command.
       The HTTP response is not proof of a completed restart. Confirmation
       comes from subsequent telemetry, especially a newly restarted
-      <code>Systeminfo_sec_seit_reset</code> counter.</li>
+      <code>Systeminfo_sec_seit_reset</code> counter. This is a restart,
+      not a factory reset; the destructive vendor <code>factory</code>
+      command is not exposed as a named setter.</li>
   <li><a id="WIFFI_DEVICE-set-counter"></a><b>counter</b> &lt;channel&gt; &lt;value&gt;
       (type <code>PULSECOUNTER</code> only)<br>
       Set counter channel 1 to 4 with the documented
@@ -409,7 +411,9 @@ sub WIFFI_DEVICE_Process {
       <code>/?reset:</code> neu. Die HTTP-Antwort beweist keinen
       abgeschlossenen Neustart. Best&auml;tigt wird er erst durch folgende
       Ger&auml;tetelemetrie, insbesondere einen neu begonnenen Z&auml;hler
-      <code>Systeminfo_sec_seit_reset</code>.</li>
+      <code>Systeminfo_sec_seit_reset</code>. Dies ist nur ein Neustart,
+      kein Werksreset; der destruktive Herstellerbefehl
+      <code>factory</code> wird nicht als eigener Setter angeboten.</li>
   <li><a id="WIFFI_DEVICE-set-counter"></a><b>counter</b> &lt;Kanal&gt; &lt;Wert&gt;
       (nur <code>PULSECOUNTER</code>)<br>
       Setzt Z&auml;hlerkanal 1 bis 4 mit dem dokumentierten Befehl
