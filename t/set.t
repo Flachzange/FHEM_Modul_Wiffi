@@ -143,6 +143,42 @@ like(WIFFI_DEVICE_Set($device,'Pump','httpGet','/ok','/extra'),qr/Usage/,
   'generic GET rejects multiple path arguments');
 is(scalar @calls, 4, 'invalid generic GET arguments never initiate HTTP');
 
+$device->{MODULTYP} = 'PULSECOUNTER';
+like(WIFFI_DEVICE_Set($device,'Pump','on'), qr/Unknown argument.*counter httpGet/,
+  'PULSECOUNTER offers counter but no pump shortcuts');
+$device->{READINGS}{w_counter2}{VAL} = '143.540';
+my $counter_calls = scalar @calls;
+my $counter = WIFFI_DEVICE_Set($device,'Pump','counter','2','143.550');
+is($counter, undef, 'PULSECOUNTER counter command accepted');
+my $counter_request = $calls[-1];
+is($counter_request->{url}, 'http://192.0.2.21/?counter:2:143.550:',
+  'counter setter uses documented manufacturer path without rewriting precision');
+is($device->{READINGS}{w_counter2}{VAL}, '143.540',
+  'counter setter does not optimistically change telemetry');
+$counter_request->{code} = 200;
+$counter_request->{callback}->($counter_request, '', 'ok');
+is($device->{READINGS}{w_counter2}{VAL}, '143.540',
+  'HTTP 200 is not treated as counter readback');
+
+for my $case (
+  ['0','143.550'], ['5','143.550'], ['2','-1'], ['2','1,5'],
+  ['2','001'], ['2','1000000'], ['2','1e3'], ['2','1.'],
+  ['2','.5'], ['2','1' . ('.' . ('1' x 31))]
+) {
+  like(WIFFI_DEVICE_Set($device,'Pump','counter',@$case), qr/Usage/,
+    "reject invalid PULSECOUNTER value/channel @$case");
+}
+like(WIFFI_DEVICE_Set($device,'Pump','counter','2'), qr/Usage/,
+  'counter setter requires channel and value');
+like(WIFFI_DEVICE_Set($device,'Pump','counter','2','1','extra'), qr/Usage/,
+  'counter setter rejects surplus arguments');
+is(scalar @calls, $counter_calls + 1,
+  'invalid counter commands never initiate HTTP');
+$device->{MODULTYP} = 'WEATHERMAN';
+like(WIFFI_DEVICE_Set($device,'Pump','counter','2','143.550'),
+  qr/Unknown argument.*httpGet/,
+  'counter setter is unavailable on WEATHERMAN');
+
 $generic = WIFFI_DEVICE_Set($device,'Pump','httpGet','/status?key=a%20b&v=1');
 is($generic, undef, 'encoded query GET accepted');
 $get = $calls[-1];
@@ -224,6 +260,10 @@ like(WIFFI_DEVICE_Set($device,'Pump','on-for-timer',30),qr/disabled/,
   'timer rejected while device disabled');
 like(WIFFI_DEVICE_Set($device,'Pump','httpGet','/'),qr/disabled/,
   'generic httpGet rejected while disabled');
+$device->{MODULTYP} = 'PULSECOUNTER';
+like(WIFFI_DEVICE_Set($device,'Pump','counter','2','143.550'),qr/disabled/,
+  'counter setter rejected while PULSECOUNTER device disabled');
+$device->{MODULTYP} = 'wiffi-pump';
 is(scalar @calls,$initial_calls+1,'disabled commands send no HTTP requests');
 my $prior_logs = scalar @logs;
 $during_disable->{callback}->($during_disable,'closed','');
@@ -263,6 +303,16 @@ is($accepted,undef,'generic command returns success in list context');
 is($skip_trigger,1,'generic HTTP command suppresses synthetic set event');
 my $quiet_get = $calls[-1];
 $quiet_get->{callback}->($quiet_get,'','');
+$device->{MODULTYP} = 'PULSECOUNTER';
+$device->{READINGS}{w_counter2}{VAL} = '143.540';
+($accepted, $skip_trigger) = WIFFI_DEVICE_Set($device,'Pump','counter','2','143.550');
+is($accepted,undef,'counter dispatch returns success in list context');
+is($skip_trigger,1,'counter command suppresses synthetic FHEM set event');
+is($device->{READINGS}{w_counter2}{VAL},'143.540',
+  'counter dispatch leaves readback to telemetry');
+my $quiet_counter = $calls[-1];
+$quiet_counter->{callback}->($quiet_counter,'','');
+$device->{MODULTYP} = 'wiffi-pump';
 ($accepted, $skip_trigger) = WIFFI_DEVICE_Set($device,'Pump','noSuchSet');
 like($accepted,qr/Unknown argument/,'invalid set still reports an error');
 ok(!defined $skip_trigger,'invalid set does not claim successful dispatch');

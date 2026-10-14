@@ -76,10 +76,14 @@ sub WIFFI_DEVICE_Undef {
 sub WIFFI_DEVICE_Set {
   my ($hash, $name, $cmd, @args) = @_;
   my $pump = ($hash->{MODULTYP} // '') eq 'wiffi-pump';
-  my $choices = $pump ? 'on off on-for-timer httpGet' : 'httpGet';
+  my $pulse = ($hash->{MODULTYP} // '') eq 'PULSECOUNTER';
+  my $choices = $pump ? 'on off on-for-timer httpGet'
+    : $pulse ? 'counter httpGet'
+    : 'httpGet';
   return "Unknown argument ".($cmd // '').", choose one of $choices"
     unless defined $cmd && ($cmd eq 'httpGet'
-      || ($pump && $cmd =~ /\A(?:on|off|on-for-timer)\z/));
+      || ($pump && $cmd =~ /\A(?:on|off|on-for-timer)\z/)
+      || ($pulse && $cmd eq 'counter'));
   return 'WIFFI device is disabled' if AttrVal($name, 'disable', 0) eq '1';
 
   my $path;
@@ -92,6 +96,14 @@ sub WIFFI_DEVICE_Set {
         && $args[0] =~ m{\A/(?!/)[A-Za-z0-9._~%!\$&'()*+,;=:@/?-]*\z}
         && $args[0] !~ /%(?![0-9A-Fa-f]{2})/;
     $path = $args[0];
+  } elsif ($cmd eq 'counter') {
+    return 'Usage: set <device> counter <channel (1..4)> <value (0..999999)>'
+      unless @args == 2
+        && $args[0] =~ /\A[1-4]\z/
+        && length($args[1]) <= 32
+        && $args[1] =~ /\A(?:0|[1-9][0-9]{0,5})(?:\.[0-9]+)?\z/
+        && $args[1] <= 999999;
+    $path = "/?counter:$args[0]:$args[1]:";
   } elsif ($cmd eq 'on-for-timer') {
     return 'Usage: set <device> on-for-timer <seconds (1..3600)>'
       unless @args == 1 && $args[0] =~ /\A[1-9][0-9]{0,3}\z/
@@ -238,6 +250,19 @@ sub WIFFI_DEVICE_Process {
       Switch on for 1 to 3600 seconds using
       <code>/?trigger:&lt;seconds&gt;:</code>. Example:
       <code>set WIFFI_PUMP2 on-for-timer 30</code>.</li>
+  <li><a id="WIFFI_DEVICE-set-counter"></a><b>counter</b> &lt;channel&gt; &lt;value&gt;
+      (type <code>PULSECOUNTER</code> only)<br>
+      Set counter channel 1 to 4 with the documented
+      <code>/?counter:&lt;channel&gt;:&lt;value&gt;:</code> command.
+      Values use a dot as decimal separator and must be between 0 and
+      999999. Example:
+      <code>set WIFFI_PULSECOUNTER_Water counter 2 143.550</code>.
+      The HTTP response is not confirmation of the stored value:
+      subsequent device telemetry is authoritative. With standard
+      reading names the result is visible in <code>w_counter1</code>
+      through <code>w_counter4</code> (or without <code>w_</code> when
+      <code>stripReadingPrefix 1</code> is active). Firmware may quantize
+      the value according to its configured counter resolution.</li>
   <li><a id="WIFFI_DEVICE-set-httpGet"></a><b>httpGet</b> &lt;relative-path&gt;<br>
       Send a GET request to an explicit relative HTTP path/query on the
       WIFFI device. Available for all WIFFI types. Example:
@@ -254,8 +279,10 @@ sub WIFFI_DEVICE_Process {
   HTTP reply does not update pump feedback or other readings;
   only later received telemetry does. Successful asynchronous HTTP
   commands do not generate a synthetic FHEM set-command event.
-  The pump shortcuts are available according to the latest valid
-  <code>modultyp</code>. A changed type can add or remove these shortcuts.
+  Type-specific shortcuts are available according to the latest valid
+  <code>modultyp</code>: pump controls for <code>wiffi-pump</code> and
+  <code>counter</code> for <code>PULSECOUNTER</code>. A changed type can
+  add or remove these shortcuts.
 </p>
 <a id="WIFFI_DEVICE-attr"></a>
 <h4>Attributes</h4>
@@ -331,6 +358,19 @@ sub WIFFI_DEVICE_Process {
       Schaltet die Pumpe f&uuml;r 1 bis 3600 Sekunden mit
       <code>/?trigger:&lt;Sekunden&gt;:</code> ein. Beispiel:
       <code>set WIFFI_PUMP2 on-for-timer 30</code>.</li>
+  <li><a id="WIFFI_DEVICE-set-counter"></a><b>counter</b> &lt;Kanal&gt; &lt;Wert&gt;
+      (nur <code>PULSECOUNTER</code>)<br>
+      Setzt Z&auml;hlerkanal 1 bis 4 mit dem dokumentierten Befehl
+      <code>/?counter:&lt;Kanal&gt;:&lt;Wert&gt;:</code>.
+      Dezimalwerte verwenden einen Punkt und m&uuml;ssen zwischen 0 und
+      999999 liegen. Beispiel:
+      <code>set WIFFI_PULSECOUNTER_Wasser counter 2 143.550</code>.
+      Die HTTP-Antwort best&auml;tigt den gespeicherten Wert nicht:
+      ma&szlig;geblich ist erst die folgende Ger&auml;tetelemetrie. Bei
+      Standardnamen ist das Ergebnis in <code>w_counter1</code> bis
+      <code>w_counter4</code> sichtbar (bzw. ohne <code>w_</code> bei
+      <code>stripReadingPrefix 1</code>). Die Firmware kann den Wert
+      entsprechend der konfigurierten Z&auml;hleraufl&ouml;sung quantisieren.</li>
   <li><a id="WIFFI_DEVICE-set-httpGet"></a><b>httpGet</b> &lt;relativer-Pfad&gt;<br>
       Sendet einen GET-Aufruf mit explizitem relativen HTTP-Pfad und
       optionaler Query an das WIFFI-Ger&auml;t. F&uuml;r alle
@@ -351,9 +391,10 @@ sub WIFFI_DEVICE_Process {
   Messwert-Readings. Daf&uuml;r ist neue TCP-Telemetrie erforderlich.
   Erfolgreich gestartete HTTP-Befehle erzeugen auch kein zus&auml;tzliches
   k&uuml;nstliches FHEM-Set-Event.
-  Die angebotenen Pumpenbefehle richten sich nach dem zuletzt
-  g&uuml;ltigen <code>modultyp</code> und passen sich bei
-  einem Typwechsel an.
+  Die angebotenen typabh&auml;ngigen Befehle richten sich nach dem zuletzt
+  g&uuml;ltigen <code>modultyp</code>: Pumpenbefehle f&uuml;r
+  <code>wiffi-pump</code> und <code>counter</code> f&uuml;r
+  <code>PULSECOUNTER</code>. Sie passen sich bei einem Typwechsel an.
 </p>
 <a id="WIFFI_DEVICE-attr"></a>
 <h4>Attribute</h4>
