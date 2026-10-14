@@ -641,3 +641,158 @@ sub WIFFI_Collector_ProcessFrame {
   return 1;
 }
 1;
+=pod
+=item device
+=item summary TCP/JSON receiver for classic STALL WIFFI devices
+=item summary_DE TCP/JSON-Empf&auml;nger f&uuml;r klassische STALL-WIFFI-Ger&auml;te
+
+=begin html
+
+<a id="WIFFI_Collector"></a>
+<h3>WIFFI_Collector</h3>
+<p>
+  Receives TCP/JSON telegrams from classic STALL WIFFI devices and forwards
+  validated measurements to logical <code>WIFFI_DEVICE</code> definitions.
+  One collector listens on one TCP port; each physical device has its own
+  logical FHEM definition.
+</p>
+<a id="WIFFI_Collector-define"></a>
+<h4>Define</h4>
+<ul>
+  <li><code>define &lt;name&gt; WIFFI_Collector &lt;tcp-port&gt;</code><br>
+      Listen on the given TCP port (1 to 65535).
+      Example: <code>define WIFFI_Collector WIFFI_Collector 9195</code>.
+      Only one listener is created for this collector.</li>
+</ul>
+<a id="WIFFI_Collector-set"></a>
+<h4>Set</h4>
+<ul>
+  <li><a id="WIFFI_Collector-set-reopen"></a><b>reopen</b><br>
+      Close the current listener and accepted connections, then reopen the
+      configured TCP port. Useful after a bind failure or port change.
+      Rejected while the collector is disabled. A failed bind is reported
+      through the diagnostic INTERNALS and FHEM log.</li>
+</ul>
+<a id="WIFFI_Collector-attr"></a>
+<h4>Attributes</h4>
+<ul>
+  <li><a id="WIFFI_Collector-attr-autocreate"></a><b>autocreate</b> (0,1; default 0)<br>
+      Automatically create a <code>WIFFI_DEVICE</code> for an unknown,
+      validated MAC address. Existing devices are matched by their complete
+      normalized MAC address. Newly created devices receive default FHEM
+      room, event and DbLog attributes; existing user-defined attributes
+      are not overwritten.</li>
+  <li><a id="WIFFI_Collector-attr-allowfrom"></a><b>allowfrom</b><br>
+      FHEM/TcpServerUtils sender restriction. Allow only trusted source
+      addresses on the local network; the WIFFI protocol does not
+      cryptographically authenticate senders.</li>
+  <li><a id="WIFFI_Collector-attr-disable"></a><b>disable</b> (0,1; default 0)<br>
+      With 1, close the listening socket and all accepted TCP client
+      connections; do not listen at startup. With 0, or after
+      <code>deleteattr &lt;name&gt; disable</code>, reopen the configured
+      port. Logical device definitions and their last readings are
+      retained. Disabling only the collector does not block separate
+      HTTP commands sent by an enabled <code>WIFFI_DEVICE</code>.</li>
+  <li><a id="WIFFI_Collector-attr-logRejectedPayload"></a><b>logRejectedPayload</b> (0,1; default 0)<br>
+      When enabled, include rejected raw telegram data in FHEM diagnostics.
+      Raw data can contain sensitive sensor values and identifiers.
+      Normally leave this setting disabled.</li>
+</ul>
+<a id="WIFFI_Collector-internals"></a>
+<h4>Diagnostics (INTERNALS)</h4>
+<ul>
+  <li><code>FRAMES_OK</code>, <code>FRAMES_ERROR</code>,
+      <code>FRAMES_UNKNOWN</code>, <code>AUTOCREATED</code>:
+      accepted, rejected, unassigned and automatically assigned frames
+      or devices.</li>
+  <li><code>LISTENER_STATUS</code> (<code>listening</code>,
+      <code>stopped</code> or <code>error</code>),
+      <code>LISTENER_ERROR</code>, <code>TCP_PORT</code>:
+      receiver status and bind/cleanup diagnostics.</li>
+  <li><code>CLIENTS_ACTIVE</code>, <code>CLIENTS_PEAK</code>,
+      <code>CLIENTS_REJECTED</code>, <code>CLIENTS_TIMEOUT</code>,
+      <code>MAX_CLIENTS</code>, <code>CLIENT_IDLE_TIMEOUT</code>,
+      <code>CLIENT_MAX_LIFETIME</code>, <code>MAX_FRAME</code>:
+      connection and size limits. These are INTERNALS, not sensor readings.</li>
+</ul>
+
+=end html
+
+=begin html_DE
+
+<a id="WIFFI_Collector"></a>
+<h3>WIFFI_Collector</h3>
+<p>
+  Empf&auml;ngt TCP/JSON-Telegramme klassischer STALL-WIFFI-Ger&auml;te und
+  &uuml;bergibt gepr&uuml;fte Messwerte an logische
+  <code>WIFFI_DEVICE</code>-Definitionen. Ein Collector verwendet einen
+  TCP-Port; jedes physische Ger&auml;t besitzt eine eigene logische
+  FHEM-Definition.
+</p>
+<a id="WIFFI_Collector-define"></a>
+<h4>Define</h4>
+<ul>
+  <li><code>define &lt;name&gt; WIFFI_Collector &lt;tcp-port&gt;</code><br>
+      Startet den TCP-Empfang auf dem angegebenen Port (1 bis 65535).
+      Beispiel: <code>define WIFFI_Collector WIFFI_Collector 9195</code>.
+      Der Collector verwendet genau einen Listener.</li>
+</ul>
+<a id="WIFFI_Collector-set"></a>
+<h4>Set</h4>
+<ul>
+  <li><a id="WIFFI_Collector-set-reopen"></a><b>reopen</b><br>
+      Schlie&szlig;t den Listener und bestehende TCP-Verbindungen und
+      &ouml;ffnet den konfigurierten Port erneut. Beispielsweise nach
+      einem Fehler beim Port-Binding. Bei deaktiviertem Collector
+      nicht erlaubt. Fehler stehen in den Diagnose-INTERNALS und im
+      FHEM-Log.</li>
+</ul>
+<a id="WIFFI_Collector-attr"></a>
+<h4>Attribute</h4>
+<ul>
+  <li><a id="WIFFI_Collector-attr-autocreate"></a><b>autocreate</b> (0,1; Standard 0)<br>
+      Legt f&uuml;r eine noch unbekannte, gepr&uuml;fte MAC-Adresse
+      automatisch ein <code>WIFFI_DEVICE</code> an.
+      Vorhandene Ger&auml;te werden &uuml;ber ihre vollst&auml;ndige,
+      normalisierte MAC-Adresse erkannt. Nur neue Ger&auml;te erhalten
+      voreingestellte Raum-, Event- und DbLog-Attribute. Benutzerattribute
+      vorhandener Ger&auml;te bleiben unver&auml;ndert.</li>
+  <li><a id="WIFFI_Collector-attr-allowfrom"></a><b>allowfrom</b><br>
+      FHEM/TcpServerUtils-Beschr&auml;nkung erlaubter Absender.
+      Den Empfang auf vertrauensw&uuml;rdige Adressen im lokalen
+      Netzwerk begrenzen. Das WIFFI-Protokoll authentifiziert
+      Absender nicht kryptografisch.</li>
+  <li><a id="WIFFI_Collector-attr-disable"></a><b>disable</b> (0,1; Standard 0)<br>
+      Mit 1 werden Listener und bestehende TCP-Verbindungen geschlossen.
+      Bei deaktiviertem Collector wird auch beim FHEM-Start kein Port
+      ge&ouml;ffnet. Mit 0 oder <code>deleteattr &lt;name&gt; disable</code>
+      wird der konfigurierte Port wieder ge&ouml;ffnet.
+      Ger&auml;tedefinitionen und vorhandene Messwerte bleiben erhalten.
+      Die Deaktivierung des Collectors sperrt nicht automatisch die
+      unabh&auml;ngige HTTP-Steuerung aktiver <code>WIFFI_DEVICE</code>.</li>
+  <li><a id="WIFFI_Collector-attr-logRejectedPayload"></a><b>logRejectedPayload</b> (0,1; Standard 0)<br>
+      Schreibt bei Fehlern zus&auml;tzlich das abgewiesene rohe
+      Telegramm ins FHEM-Log. Das kann vertrauliche Messwerte oder
+      Kennungen enthalten. Normalerweise ausgeschaltet lassen.</li>
+</ul>
+<a id="WIFFI_Collector-internals"></a>
+<h4>Diagnose (INTERNALS)</h4>
+<ul>
+  <li><code>FRAMES_OK</code>, <code>FRAMES_ERROR</code>,
+      <code>FRAMES_UNKNOWN</code>, <code>AUTOCREATED</code>:
+      angenommene, abgewiesene und nicht zugeordnete Telegramme
+      sowie automatisch angelegte Ger&auml;te.</li>
+  <li><code>LISTENER_STATUS</code> (<code>listening</code>,
+      <code>stopped</code> oder <code>error</code>),
+      <code>LISTENER_ERROR</code>, <code>TCP_PORT</code>:
+      Listener-Zustand und Fehler beim &Ouml;ffnen oder Bereinigen.</li>
+  <li><code>CLIENTS_ACTIVE</code>, <code>CLIENTS_PEAK</code>,
+      <code>CLIENTS_REJECTED</code>, <code>CLIENTS_TIMEOUT</code>,
+      <code>MAX_CLIENTS</code>, <code>CLIENT_IDLE_TIMEOUT</code>,
+      <code>CLIENT_MAX_LIFETIME</code>, <code>MAX_FRAME</code>:
+      Verbindungs- und Gr&ouml;&szlig;enbegrenzungen. Keine Readings.</li>
+</ul>
+
+=end html_DE
+
+=cut
