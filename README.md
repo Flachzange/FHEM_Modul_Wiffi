@@ -76,7 +76,25 @@ On `modify WIFFI_Collector <new-port>`, temporary clients and the existing liste
 
 FHEM's own `TcpServer_Open` currently writes its usual `state=Initialized` **Reading** when attempting to open a port, even before bind success. That framework behavior is not used as the listener health indicator; `LISTENER_STATUS` and `LISTENER_ERROR` are not Readings and produce no additional events or DbLog rows.
 
-**Verification limit:** `t/lifecycle.t` exercises FHEM/TcpServerUtils contracts with a test double, including simulated `CommandDelete`/`UndefFn`/`DeleteFn` refusal, partial child cleanup, repeated recovery attempts and lifecycle rollback. These are isolated unit tests; actual socket ownership, `%selectlist`, `reload`, `rereadcfg` and live FHEM failure recovery are not yet verified. The live scenarios are listed in [`docs/fhem-lifecycle-test-matrix.md`](docs/fhem-lifecycle-test-matrix.md). Issue #9 separately tracks `disable` support.
+**Verification limit:** `t/lifecycle.t` exercises FHEM/TcpServerUtils contracts with a test double, including simulated `CommandDelete`/`UndefFn`/`DeleteFn` refusal, partial child cleanup, repeated recovery attempts and lifecycle rollback. These are isolated unit tests; actual socket ownership, `%selectlist`, `reload`, `rereadcfg` and live FHEM failure recovery are not yet verified. The live scenarios are listed in [`docs/fhem-lifecycle-test-matrix.md`](docs/fhem-lifecycle-test-matrix.md), including the unverified `disable` lifecycle scenarios.
+
+### Standard FHEM `disable` attribute (Issue #9)
+
+Both the listener and each logical device support `disable:0,1` independently. Use the normal FHEM commands:
+
+```text
+attr WIFFI_Collector disable 1
+attr WIFFI_Collector disable 0
+deleteattr WIFFI_Collector disable
+attr WIFFI_PUMP2 disable 1
+attr WIFFI_PUMP2 disable 0
+deleteattr WIFFI_PUMP2 disable
+```
+
+- **Collector disabled:** close the listener and accepted TCP connections, including their temporary FHEM client entries and associated timers. No incoming telemetry is received and `set WIFFI_Collector reopen` is refused while disabled. At FHEM startup, an already-disabled collector does not bind its port. `disable 0` or `deleteattr disable` opens the configured port again without requiring a restart; unsuccessful rebinds remain visible in `LISTENER_STATUS=error` and `LISTENER_ERROR`. Existing logical device definitions/readings are preserved.
+- **Individual WIFFI_DEVICE disabled:** an accepted telegram for that MAC does not update readings, `state`, `MODULTYP` or heartbeat; it is intentionally ignored rather than counted in `FRAMES_OK`, `FRAMES_ERROR` or `FRAMES_UNKNOWN`. Autocreate does not create a replacement for the disabled, already-known MAC. Other logical devices on the same collector continue to receive data. `on`, `off`, `on-for-timer` and `httpGet` are blocked; a currently pending asynchronous HTTP request is closed and any late callback ignored. Removing the attribute or setting `disable 0` resumes normal telemetry and commands.
+- These are **independent scopes**: disabling the collector stops the TCP listener, but does not by itself block an already-defined logical device from making a direct HTTP request to its last observed peer. To disable that outgoing control as well, disable the `WIFFI_DEVICE` itself.
+- Deliberate disabling does not introduce new diagnostic readings or polling. A real FHEM runtime test of `AttrFn`, FHEMWEB and socket ownership is **still pending**; isolated regression tests alone do not establish the full lifecycle behavior.
 
 ### Synchronous FHEM callbacks during TCP receive
 
@@ -215,7 +233,7 @@ A successful HTTP request is **not confirmation that the relay changed state**. 
 - Real FHEM telemetry was observed for WIFFI-pump 2, WEATHERMAN and one PULSECOUNTER. Other hardware/firmware variants, TCP framing edge cases, startup/reload/disable and listener failure recovery still require live integration tests.
 - **Tested on physical WIFFI-pump 2 (`wiffi_pump2_110`, 2026-10-11):** `on`/`off` switch the pump and `on-for-timer 30` starts it. Timer expiry was not independently measured; generic `httpGet` and HTTP commands on other WIFFI types have **not** been field-tested.
 - No timer-based offline detector: consumers may use the `Systeminfo_sec_seit_reset` reading age.
-- Statistics and listener diagnostics are collector INTERNALS, not Readings. The new `modify`, `rename` and manual `set reopen` paths have isolated regression tests; actual FHEM socket ownership, `reload`, `rereadcfg` and `disable` still need live verification (issues #4/#9).
+- Statistics and listener diagnostics are collector INTERNALS, not Readings. The new `modify`, `rename` and manual `set reopen` paths have isolated regression tests; actual FHEM socket ownership, `reload`, `rereadcfg` and the new `disable` behavior still need live verification (issues #4/#9).
 - Automatic creation produces stable names from the **full MAC address**. Rename FHEM devices as desired; matching uses collector + MAC, not the name.
 - Existing MQTT-derived reading names (e.g. `gas_vars_2_value`, `aussentemperatur`) are deliberately **not** retained; dependent `userReadings`, statistics, DOIF, and DbLog queries need migration.
 - Systeminfo and numeric readings are preserved as text; the code must not interpret units or coerce implausible counters.
