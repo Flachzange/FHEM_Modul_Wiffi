@@ -1,6 +1,6 @@
 # FHEM WIFFI Collector (early prototype)
 
-Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:** real FHEM telemetry and autocreate were observed with a WIFFI-pump 2 on 2026-10-10; WEATHERMAN and PULSECOUNTER telemetry were observed on 2026-10-11. WIFFI-pump 2 on/off and a 30-second timer command were also exercised on real hardware on 2026-10-11. Those functional observations do **not** verify every device variant, end-to-end timeout duration, listener lifecycle, reload or failure recovery.
+Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:** real FHEM telemetry/autocreate were observed on WIFFI-pump 2, WEATHERMAN and PULSECOUNTER in October 2026. Pump on/off and timer startup, PULSECOUNTER `counter`, `reset`, FHEMWEB's detail link, `reopen`, normal FHEM restart/configDB restoration and `disable`/`enable` of both module types were also confirmed by the maintainer. These observations are **not** evidence for every firmware variant or the unrun port-conflict, `reload`/`rereadcfg`, active-client or failure-injection scenarios.
 
 ## Design
 
@@ -94,7 +94,7 @@ deleteattr WIFFI_PUMP2 disable
 - **Collector disabled:** close the listener and accepted TCP connections, including their temporary FHEM client entries and associated timers. No incoming telemetry is received and `set WIFFI_Collector reopen` is refused while disabled. At FHEM startup, an already-disabled collector does not bind its port. `disable 0` or `deleteattr disable` opens the configured port again without requiring a restart; unsuccessful rebinds remain visible in `LISTENER_STATUS=error` and `LISTENER_ERROR`. Existing logical device definitions/readings are preserved.
 - **Individual WIFFI_DEVICE disabled:** an accepted telegram for that MAC does not update readings, `state`, `MODULTYP` or heartbeat; it is intentionally ignored rather than counted in `FRAMES_OK`, `FRAMES_ERROR` or `FRAMES_UNKNOWN`. Autocreate does not create a replacement for the disabled, already-known MAC. Other logical devices on the same collector continue to receive data. `on`, `off`, `on-for-timer` and `httpGet` are blocked; a currently pending asynchronous HTTP request is closed and any late callback ignored. Removing the attribute or setting `disable 0` resumes normal telemetry and commands.
 - These are **independent scopes**: disabling the collector stops the TCP listener, but does not by itself block an already-defined logical device from making a direct HTTP request to its last observed peer. To disable that outgoing control as well, disable the `WIFFI_DEVICE` itself.
-- Deliberate disabling does not introduce new diagnostic readings or polling. A real FHEM runtime test of `AttrFn`, FHEMWEB and socket ownership is **still pending**; isolated regression tests alone do not establish the full lifecycle behavior.
+- Deliberate disabling does not introduce new diagnostic readings or polling. The maintainer confirmed that `disable`/`enable` worked for both `WIFFI_Collector` and `WIFFI_DEVICE` in live FHEM. Detailed FD/`%selectlist`, disabled-startup and pending HTTP cancellation acceptance is still pending; isolated regression tests cover those paths but do not establish the full live lifecycle.
 
 ### Synchronous FHEM callbacks during TCP receive
 
@@ -298,12 +298,12 @@ MAC addresses below are **synthetic placeholders**, not identifiers of the obser
 
 ## Known limitations / pending work
 
-- Real FHEM telemetry was observed for WIFFI-pump 2, WEATHERMAN and one PULSECOUNTER. Other hardware/firmware variants, TCP framing edge cases, startup/reload/disable and listener failure recovery still require live integration tests.
+- Real FHEM telemetry was observed for WIFFI-pump 2, WEATHERMAN and PULSECOUNTER. Manual `reopen`, normal restart with configDB restore and both module types' `disable`/`enable` were positively confirmed. Other firmware variants, special TCP framing, `reload`/`rereadcfg`, port collisions and failure recovery require separate staging tests.
 - **Tested on physical WIFFI-pump 2 (`wiffi_pump2_110`, 2026-10-11):** `on`/`off` switch the pump and `on-for-timer 30` starts it. Timer expiry was not independently measured.
-- **Observed on physical PULSECOUNTER2-LAN (`counter_LAN41`, 2026-10-11):** the manufacturer's direct `counter` HTTP command changes the physical counter and normal telemetry reports the resulting value. The new FHEM convenience setter uses that verified command path; its FHEM SetFn wrapper still needs an explicit live-FHEM invocation record before release sign-off.
+- **PULSECOUNTER2-LAN (`counter_LAN41`):** the manufacturer's direct `counter` HTTP command changes the physical counter and normal telemetry reports the resulting value (2026-10-11). The maintainer subsequently confirmed that the FHEM `counter` convenience setter works. The exact setter value and a before/after reading transcript were not recorded.
 - Other generic `httpGet` commands and WEATHERMAN configuration actions have not been promoted to convenience setters without telemetry-visible readback.
 - No timer-based offline detector: consumers may use the `Systeminfo_sec_seit_reset` reading age.
-- Statistics and listener diagnostics are collector INTERNALS, not Readings. The new `modify`, `rename` and manual `set reopen` paths have isolated regression tests; actual FHEM socket ownership, `reload`, `rereadcfg` and the new `disable` behavior still need live verification (issues #4/#9).
+- Statistics and listener diagnostics are collector INTERNALS, not Readings. `reopen` and `disable`/`enable` have successful real-FHEM smoke tests; `modify`, `rename`, `reload`, `rereadcfg`, complete socket cleanup and detailed failure paths remain tracked in [issue #4](https://github.com/Flachzange/FHEM_Modul_Wiffi/issues/4). The implementation issue #9 is closed.
 - Automatic creation produces stable names from the **full MAC address**. Rename FHEM devices as desired; matching uses collector + MAC, not the name.
 - Existing MQTT-derived reading names (e.g. `gas_vars_2_value`, `aussentemperatur`) are deliberately **not** retained; dependent `userReadings`, statistics, DOIF, and DbLog queries need migration.
 - Systeminfo and numeric readings are preserved as text; the code must not interpret units or coerce implausible counters.
@@ -331,7 +331,7 @@ format follows the [official developer guidelines](https://wiki.fhem.de/wiki/Gui
 prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t t/transport.t t/lifecycle.t t/reentrancy.t t/commandref.t
 ```
 
-This is the same eight-file test command used by `.github/workflows/perl-tests.yml`. The `t/commandref.t` test validates English/German commandref sections, anchor parity and simple HTML tag pairing. It exercises the two real Perl modules against **isolated FHEM contract doubles**, not a full FHEM runtime or live socket/hardware environment. The CI workflow also checks Perl syntax for both modules. Real hardware observations and the **unrun** live-FHEM listener/lifecycle matrix are documented separately in [`docs/fhem-lifecycle-test-matrix.md`](docs/fhem-lifecycle-test-matrix.md).
+This is the same eight-file test command used by `.github/workflows/perl-tests.yml`. The `t/commandref.t` test validates English/German commandref sections, anchor parity and simple HTML tag pairing. It exercises the two real Perl modules against **isolated FHEM contract doubles**, not a full FHEM runtime or live socket/hardware environment. The CI workflow also checks Perl syntax for both modules. Real hardware observations, the completed **partial** FHEM smoke tests and the **incomplete** full listener/lifecycle matrix are documented separately in [`docs/fhem-lifecycle-test-matrix.md`](docs/fhem-lifecycle-test-matrix.md).
 
 ## License
 
