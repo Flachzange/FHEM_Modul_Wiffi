@@ -5,7 +5,7 @@ Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:
 ## Design
 
 - One `WIFFI_Collector` listens on a shared TCP port, using FHEM's `TcpServerUtils`, and contains the shared JSON parser.
-- One logical `WIFFI_DEVICE` per MAC address; optional automatic creation on the first valid telegram, disabled by default.
+- One logical `WIFFI_DEVICE` per MAC address, with a MAC-only `DEF` and a standard FHEM `IODev` reference to the receiving collector; optional automatic creation on the first valid telegram, disabled by default.
 - Uses `vars[].homematic_name` as the FHEM reading name by default. Optionally removes only the leading `w_` per device using `stripReadingPrefix`.
 - Exposes `Systeminfo` fields with a `Systeminfo_` prefix.
 - Reassembles stream fragments delimited by ETX (`0x03`) or EOT (`0x04`); attempts any remaining JSON on TCP EOF.
@@ -78,7 +78,7 @@ set WIFFI_Collector reopen
 
 `reopen` first tries to delete all accepted temporary TCP clients, closes the old listener and clears stale listener/socket metadata. **If any client deletion reports an error or leaves its original FHEM definition behind, no new listener is opened.** `CLIENTS_ACTIVE` reflects only remaining open client sockets, `LISTENER_STATUS=error` and `LISTENER_ERROR` identify the cleanup failure; each individual failure is logged at **level 1** (including repeat attempts). After correcting the cause, `set reopen` retries the cleanup and can restore reception without an automatic retry loop. A failed port bind likewise returns/logs an error and keeps the collector defined. Successful opens, listener closes and renames are logged at **level 3**. These lifecycle logs are independent of `logRejectedPayload`, which controls *only* inclusion of raw rejected JSON in frame diagnostics.
 
-On `modify WIFFI_Collector <new-port>`, temporary clients and the existing listener are closed before binding the new port. If client cleanup fails, the module returns an error: FHEM restores the previous device definition, the old configured `TCP_PORT` remains, and the listener stays stopped with an error until manual `set reopen`. The collector's per-definition counters are reset **only on successful redefinition**. Invalid port syntax is rejected without closing the healthy listener. `undefine` also reports a cleanup failure rather than allowing FHEM to remove a collector with clients left behind. After correcting the failure, retry `undefine` or use `set reopen`. A normal `rename` preserves the active connection while migrating the listener select-list entry, temporary client parent references and the `COLLECTOR`/`DEF` references of its logical WIFFI_DEVICE children; sensor readings and user attributes remain unchanged. Downstream automations referring to the old collector name may require updating.
+On `modify WIFFI_Collector <new-port>`, temporary clients and the existing listener are closed before binding the new port. If client cleanup fails, the module returns an error: FHEM restores the previous device definition, the old configured `TCP_PORT` remains, and the listener stays stopped with an error until manual `set reopen`. The collector's per-definition counters are reset **only on successful redefinition**. Invalid port syntax is rejected without closing the healthy listener. `undefine` also reports a cleanup failure rather than allowing FHEM to remove a collector with clients left behind. After correcting the failure, retry `undefine` or use `set reopen`. A normal `rename` preserves the active connection while migrating the listener select-list entry, temporary client parent references and the `IODev` attributes and any remaining legacy `DEF` references of its logical WIFFI_DEVICE children; sensor readings and user-defined attributes unrelated to the binding remain unchanged. Downstream automations referring to the old collector name may require updating.
 
 FHEM's own `TcpServer_Open` currently writes its usual `state=Initialized` **Reading** when attempting to open a port, even before bind success. That framework behavior is not used as the listener health indicator; `LISTENER_STATUS` and `LISTENER_ERROR` are not Readings and produce no additional events or DbLog rows.
 
@@ -128,30 +128,54 @@ Unchanged readings continue to receive fresh timestamps, but do not generate ord
 
 These attributes are set only at initial autocreate and only if a `DEFINED` handler has not already set the attribute. They are not forced onto existing logical devices, and later telegrams never overwrite user configuration. All defaults can be changed or removed with normal `attr`/`deleteattr` commands.
 
-The collector records successful auto-creations in the `AUTOCREATED` internal, and rejects duplicate logical MAC assignments, a changed sending IP for a known MAC, or a sending IP already associated with a different MAC. No arbitrary existing FHEM device is overwritten on name collision. Conflict resolution is deliberately manual. If a device legitimately changes IP, first verify the new assignment; then run `modify <device-name> <collector-name> <MAC>` in FHEM (for example `modify WIFFI_020000000001 WIFFI_Collector 02:00:00:00:00:01`) to clear its learned peer identity. Subsequent valid frames can then establish the new IP. Peer identity is an in-process observation and cannot authenticate senders or detect past conflicts after restart. Automatic discovery should only be used on a trusted LAN.
+The collector records successful auto-creations in the `AUTOCREATED` internal, and rejects duplicate logical MAC assignments, a changed sending IP for a known MAC, or a sending IP already associated with a different MAC. No arbitrary existing FHEM device is overwritten on name collision. Conflict resolution is deliberately manual. If a device legitimately changes IP, first verify the new assignment; then run `modify <device-name> <MAC>` in FHEM (for example `modify WIFFI_020000000001 02:00:00:00:00:01`) to clear its learned peer identity. Subsequent valid frames can then establish the new IP. Peer identity is an in-process observation and cannot authenticate senders or detect past conflicts after restart. Automatic discovery should only be used on a trusted LAN.
 
 The WiFFI devices need to push TCP/JSON to FHEM's IP address on port 9192. **Do not change all devices at once**; initially test one device and keep the established Node-RED integrations until proven reliable.
 
-Manual definition without auto-create is also possible. The following
-**alternative** syntaxes identify the same device (synthetic example MAC):
+Manual definition without auto-create is also possible. New devices use
+a MAC-only `DEF`, with the collector selected through standard FHEM `IODev`
+(synthetic example MAC):
 
 ```text
-define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 02:00:00:00:00:01
+define WIFFI_PUMP2 WIFFI_DEVICE 02:00:00:00:00:01
+attr WIFFI_PUMP2 IODev WIFFI_Collector
 ```
 
-Or, instead of the command above:
+The compact MAC `020000000001` works as well; the normalized `MAC`
+INTERNAL is always uppercase, colon-separated. With exactly one available
+collector, FHEM can find it via `AssignIoPort` and the collector's `Clients`
+registration. **Explicitly set `IODev` when multiple collectors exist.**
+Autocreate always assigns the actual receiving collector as a persistent
+`IODev` attribute and stores only the MAC in `DEF`. FHEM also maintains
+its own `IODev` Reading as part of the standard IO mechanism.
+
+**Migration for existing devices** (same device name and Readings, no deletion
+or recreated FUUID): old definitions such as
+`define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 02:00:00:00:00:01`
+continue to load unchanged. After updating both module files, run:
 
 ```text
-define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 020000000001
+attr WIFFI_PUMP2 IODev WIFFI_Collector
+modify WIFFI_PUMP2 B4:E6:2D:17:DB:07
+save
 ```
 
-Both forms (upper- or lowercase hexadecimal) normalize internally to
-`02:00:00:00:00:01`. The original colon-separated format remains supported,
-including one-digit octets. This also works with `modify` and incoming WIFFI
-MAC fields, so there is no duplicate logical device. Other separators,
-mixed formats and MACs with fewer or more than 12 unseparated hexadecimal
-digits are rejected. Existing definitions remain unchanged; no automatic
-configuration rewrite is performed.
+Use the **actual MAC from your existing `DEF`** in the `modify` command;
+the address shown above is the known WIFFI-pump example and is not a
+universal placeholder for every device. Repeat per device, with its own MAC
+and appropriate collector. This explicit migration also works with configDB:
+`save` persists the MAC-only definition and its `IODev` attribute.
+A `modify` invalidates the previously learned TCP peer, so the device
+needs another telegram before its direct HTTP commands work again.
+Do **not** delete/redefine the device just to change the definition.
+Nothing automatically rewrites existing manual definitions during an update.
+A collector rename updates matching `IODev` attributes and any remaining
+legacy collector prefix in `DEF`.
+
+Removing `attr IODev` intentionally unbinds a device at runtime and clears
+the previously learned peer. Reassign it explicitly; do not rely on the
+old IODev Reading to select a different collector later. `IODev` is the
+only runtime binding: the former `COLLECTOR` INTERNAL is no longer used.
 
 For devices already created while the earlier **unfiltered** autocreate defaults were active (such as `WIFFI_DEADBEEFFE00`), add the three attributes manually if desired. For an unfiltered device, remove them using `deleteattr <device> <attribute>`. Updating the collector does **not** retrofit attributes onto existing devices.
 
@@ -334,7 +358,7 @@ format follows the [official developer guidelines](https://wiki.fhem.de/wiki/Gui
 ## Testing
 
 ```sh
-prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t t/transport.t t/lifecycle.t t/reentrancy.t t/commandref.t t/meta.t t/telegram_internals.t
+prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t t/transport.t t/lifecycle.t t/reentrancy.t t/commandref.t t/meta.t t/telegram_internals.t t/iodev.t
 ```
 
 This is the test command used by `.github/workflows/perl-tests.yml`. The `t/commandref.t` test validates English/German commandref sections, anchor parity and simple HTML tag pairing. It exercises the two real Perl modules against **isolated FHEM contract doubles**, not a full FHEM runtime or live socket/hardware environment. The CI workflow also checks Perl syntax for both modules. Real hardware observations, the completed **partial** FHEM smoke tests and the deliberately **waived/unverified** full listener/lifecycle matrix are documented separately in [`docs/fhem-lifecycle-test-matrix.md`](docs/fhem-lifecycle-test-matrix.md).
