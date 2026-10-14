@@ -14,7 +14,6 @@ sub WIFFI_DEVICE_Initialize {
   $hash->{AttrFn} = 'WIFFI_DEVICE_Attr';
   $hash->{FW_detailFn} = 'WIFFI_DEVICE_FwDetail';
   $hash->{FW_deviceOverview} = 1;
-  $hash->{FW_addDetailToSummary} = 1;
   $hash->{AttrList} = 'stripReadingPrefix:0,1 disable:0,1 '.$readingFnAttributes;
 }
 
@@ -90,7 +89,8 @@ sub WIFFI_DEVICE_FwDetail {
   return undef unless $hash && $hash->{TYPE} eq 'WIFFI_DEVICE';
   my $peer = WIFFI_DEVICE_ValidPeer($hash);
   return undef unless $peer;
-  return qq{<a href="http://$peer/" target="_blank" rel="noopener noreferrer">WIFFI Webinterface</a>};
+  # FHEMWEB appends one <br> after FW_detailFn; add one more for spacing.
+  return qq{<a href="http://$peer/" target="_blank" rel="noopener noreferrer">WIFFI Webinterface</a><br>};
 }
 
 # Every WIFFI supports an explicit relative HTTP GET path. Named shortcuts
