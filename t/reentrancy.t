@@ -98,7 +98,11 @@ sub CommandDefine {
 sub CommandAttr {
   my ($cl,$def) = @_;
   my ($name,$key,$value)=split /\s+/, $def,3;
+  my $error = WIFFI_DEVICE_Attr('set',$name,$key,$value)
+    if $key eq 'IODev';
+  return $error if $error;
   $attr{$name}{$key}=$value;
+  AssignIoPort($defs{$name},$value) if $key eq 'IODev';
   if ($on_attr) {
     my $callback=$on_attr;
     undef $on_attr;
@@ -107,6 +111,7 @@ sub CommandAttr {
   return undef;
 }
 
+require './t/lib/WiffiIOStub.pm';
 require './FHEM/00_WIFFI_Collector.pm';
 require './FHEM/10_WIFFI_DEVICE.pm';
 
@@ -260,7 +265,7 @@ $client=send_frames($server,'collector-rename',61,62);
 is($server->{FRAMES_OK},2,'collector rename retains valid connection');
 is($device->{READINGS}{w_counter1}{VAL},62,'second frame processed after collector rename');
 is($client->{SNAME},'RenamedCollector','temporary client parent updated on rename');
-is($device->{COLLECTOR},'RenamedCollector','logical collector association updated');
+is($device->{IODev},$server,'IODev still references renamed collector');
 is($server->{CLIENTS_ACTIVE},1,'client remains counted after collector rename');
 ok(exists $defs{$client->{NAME}},'rename does not close active client');
 CommandDelete(undef,$client->{NAME});
@@ -279,7 +284,7 @@ CommandDelete(undef,$client->{NAME});
 $on_update=sub {
   is(CommandDelete(undef,'Pump'),undef,'delete old device before name reuse');
   my $replacement={NAME=>'Pump',TYPE=>'WIFFI_DEVICE',
-    COLLECTOR=>'Collector',MAC=>'02:00:00:00:00:01',
+    IODev=>$server,MAC=>'02:00:00:00:00:01',
     READINGS=>{}};
   $defs{Pump}=$replacement;
 };
