@@ -373,4 +373,53 @@ WIFFI_Collector_ProcessFrame($server, '{"modultyp":"PULSECOUNTER"', '192.0.2.21'
 is($definitions, 0, 'truncated JSON creates nothing');
 is($server->{FRAMES_ERROR}, 1, 'truncated JSON rejected');
 
+
+# A single bad vars entry after a good one must not publish ANY measurements,
+# state, heartbeat, or success counter. This uses the isolated FHEM test double.
+$server = start_case();
+my $atomic_name = 'WIFFI_Atomic';
+is(CommandDefine(undef,
+  "$atomic_name WIFFI_DEVICE Collector 02:00:00:00:00:08"),
+  undef, 'test target defined');
+my $atomic_device = $defs{$atomic_name};
+my $atomic_good = '{"modultyp":"PULSECOUNTER","vars":['
+  .'{"homematic_name":"w_counter1","value":"12.500"}'
+  .'],"Systeminfo":{"MAC-Adresse":"02:00:00:00:00:08",'
+  .'"sec_seit_reset":"10"}}';
+WIFFI_Collector_ProcessFrame($server, $atomic_good, '192.0.2.28');
+is($server->{FRAMES_OK}, 1, 'baseline frame succeeds');
+my %readings_before = map { $_ => $atomic_device->{READINGS}{$_}{VAL} }
+  keys %{$atomic_device->{READINGS}};
+my $atomic_bad = '{"modultyp":"PULSECOUNTER","vars":['
+  .'{"homematic_name":"w_counter1","value":"999"},'
+  .'{"homematic_name":"w_counter2","value":null}'
+  .'],"Systeminfo":{"MAC-Adresse":"02:00:00:00:00:08",'
+  .'"sec_seit_reset":"999"}}';
+my $errors_before = $server->{FRAMES_ERROR};
+WIFFI_Collector_ProcessFrame($server, $atomic_bad, '192.0.2.28');
+is($server->{FRAMES_ERROR}, $errors_before + 1, 'bad frame increases FRAMES_ERROR');
+is($server->{FRAMES_OK}, 1, 'bad frame does not increase FRAMES_OK');
+my %readings_after = map { $_ => $atomic_device->{READINGS}{$_}{VAL} }
+  keys %{$atomic_device->{READINGS}};
+is_deeply(\%readings_after, \%readings_before,
+  'bad frame leaves every reading including state and heartbeat unchanged');
+ok(!exists $atomic_device->{READINGS}{w_counter2},
+  'bad entry never creates an incomplete reading');
+ok(grep(/vars\[1\].*null value/, @logs),
+  'error reports entry index and reason without full payload');
+ok(!grep(/999.*999/, @logs), 'error log does not contain full raw telegram');
+
+# Malformed newly discovered frames must not autocreate a logical device.
+$attr{Collector}{autocreate} = 1;
+my $unknown_bad = '{"modultyp":"PULSECOUNTER","vars":['
+  .'{"homematic_name":"w_counter1","value":null}'
+  .'],"Systeminfo":{"MAC-Adresse":"02:00:00:00:00:09",'
+  .'"sec_seit_reset":20}}';
+my $definitions_before = $definitions;
+my $unknown_errors_before = $server->{FRAMES_ERROR};
+WIFFI_Collector_ProcessFrame($server, $unknown_bad, '192.0.2.29');
+is($definitions, $definitions_before, 'bad unknown frame does not autocreate');
+is($server->{FRAMES_ERROR}, $unknown_errors_before + 1,
+  'bad unknown frame counted as invalid');
+
 done_testing();
