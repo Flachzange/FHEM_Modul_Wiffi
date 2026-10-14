@@ -837,7 +837,7 @@ sub WIFFI_Collector_ProcessFrame {
 {
   "name": "FHEM-WIFFI-Collector",
   "abstract": "Shared TCP collector for classic WIFFI telemetry",
-  "version": "v0.1.0",
+  "version": "v0.2.0",
   "author": ["Flachzange"],
   "license": ["open_source"],
   "release_status": "testing"
