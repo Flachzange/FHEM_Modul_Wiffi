@@ -110,6 +110,8 @@ is($initialized_module->{RenameFn}, 'WIFFI_Collector_Rename',
    'standard RenameFn callback registered');
 is($initialized_module->{AttrFn}, 'WIFFI_Collector_Attr', 'collector AttrFn registered');
 like($initialized_module->{AttrList}, qr/disable:0,1/, 'collector offers disable attribute');
+is($h->{FVERSION}, '00_WIFFI_Collector.pm:v0.2.0',
+  'collector exposes actual module version as FVERSION INTERNAL without SVN Id');
 is($h->{LISTENER_STATUS}, 'listening', 'listener status INTERNAL set on success');
 is($h->{CLIENTS_TIMEOUT}, 0, 'CLIENTS_TIMEOUT initialized on first define');
 ok(!exists $h->{READINGS}{CLIENTS_TIMEOUT},
