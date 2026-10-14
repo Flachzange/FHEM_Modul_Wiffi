@@ -42,4 +42,12 @@ $error = WIFFI_DEVICE_Define(\%bad,
     'WIFFI_Bad WIFFI_DEVICE WIFFI_TestCollector badmac');
 is($error, 'Invalid WIFFI MAC address', 'invalid MAC rejected');
 
+my %extra;
+$error = WIFFI_DEVICE_Define(\%extra,
+  'WIFFI_Extra WIFFI_DEVICE WIFFI_TestCollector B4:E6:2D:17:DB:07 ignored');
+is($error,
+  'Usage: define <name> WIFFI_DEVICE <collector-name> <mac-address>',
+  'device refuses surplus definition parameters');
+ok(!exists $extra{MAC},'invalid surplus definition does not initialize identity');
+
 done_testing();
