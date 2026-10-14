@@ -13,6 +13,8 @@ use vars qw(%defs %selectlist $init_done $readingFnAttributes);
 sub WIFFI_Collector_NormalizeMac {
   my ($mac) = @_;
   return undef unless defined $mac;
+  # Also accept exactly 12 hex digits without separators.
+  $mac = join ':', ($mac =~ /(..)/g) if $mac =~ /\A[0-9a-fA-F]{12}\z/;
   my @octets = split /:/, $mac, -1;
   return undef unless @octets == 6;
   for my $octet (@octets) {
