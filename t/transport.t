@@ -164,7 +164,7 @@ syswrite($write_frames, $combined) == length($combined)
   or die "unable to write coalesced frames";
 WIFFI_Collector_Read($frames_client);
 is($server->{FRAMES_OK}, 2, 'both coalesced complete frames are accepted');
-is($device->{READINGS}{w_counter1}{VAL}, '22.500', 'second frame updates value');
+is($device->{READINGS}{w_counter1}{VAL}, '22.5', 'JSON numeric value from second frame updates reading');
 is($server->{FRAMES_ERROR}, 0, 'coalescing introduces no parse error');
 is($server->{CLIENTS_ACTIVE}, 1, 'connection retained after complete frames');
 
@@ -177,7 +177,7 @@ syswrite($write_frames, $mixed) == length($mixed)
 WIFFI_Collector_Read($frames_client);
 is($server->{FRAMES_ERROR}, 1, 'oversized complete frame rejected');
 is($server->{FRAMES_OK}, 3, 'valid frame after oversized frame still processed');
-is($device->{READINGS}{w_counter1}{VAL}, '22.500', 'valid frame remains visible');
+is($device->{READINGS}{w_counter1}{VAL}, '22.5', 'valid JSON numeric frame remains visible');
 
 # A buffer with no delimiter must not grow past the frame limit.
 my $unfinished = 'X' x ($server->{MAX_FRAME} + 1);
@@ -189,7 +189,7 @@ is($server->{FRAMES_ERROR}, 2, 'unfinished frame counted once');
 is($server->{CLIENTS_ACTIVE}, 0, 'oversize cleanup releases active slot');
 
 # EOF is an allowed framing boundary for a valid, fully formed JSON telegram.
-my ($eof_client, $eof_writer) = make_client('eof', '192.0.2.26');
+my ($eof_client, $eof_writer) = make_client('eof', '192.0.2.25');
 accept_client($server, $eof_client);
 $server->{MAX_FRAME} = 262144;
 my $eof_data = telegram('33.333');
