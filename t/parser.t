@@ -61,7 +61,7 @@ ok(!exists $weather_zero_packet->{readings}{'Systeminfo_MAC-Adresse'},
 
 my $weather_packet = WIFFI_Collector_Decode($weather);
 is($weather_packet->{readings}{w_temperatur}, '12.3',
-  'optional WEATHERMAN brightness can be absent');
+  'hypothetically omitted optional brightness accepted');
 ok(!exists $weather_packet->{readings}{w_lux},
   'no invented brightness reading');
 
