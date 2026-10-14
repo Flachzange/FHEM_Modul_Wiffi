@@ -129,7 +129,7 @@ The WiFFI devices need to push TCP/JSON to FHEM's IP address on port 9192. **Do 
 Manual definition without auto-create is also possible:
 
 ```text
-define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector B4:E6:2D:17:DB:07
+define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 02:00:00:00:00:01
 ```
 
 For devices already created while the earlier **unfiltered** autocreate defaults were active (such as `WIFFI_DEADBEEFFE00`), add the three attributes manually if desired. For an unfiltered device, remove them using `deleteattr <device> <attribute>`. Updating the collector does **not** retrofit attributes onto existing devices.
@@ -221,12 +221,14 @@ A successful HTTP request is **not confirmation that the relay changed state**. 
 
 ## Recognized sample devices
 
+MAC addresses below are **synthetic placeholders**, not identifiers of the observed physical WIFFI devices.
+
 | Type | MAC | Example readings |
 | --- | --- | --- |
-| WIFFI-pump 2 | `B4:E6:2D:17:DB:07` | `wiffi_ww_temp`, `wiffi_pump` |
-| WEATHERMAN | `E8:DB:84:98:C6:D3` | `w_temperatur`, `w_lux` |
-| PULSECOUNTER Strom | `DE:AD:BE:EF:FE:00` | `w_counter1`, `w_power1` |
-| PULSECOUNTER Gas | `DE:AD:BE:EF:FE:01` | `w_counter1`, `w_power1` |
+| WIFFI-pump 2 | `02:00:00:00:00:01` | `wiffi_ww_temp`, `wiffi_pump` |
+| WEATHERMAN | `02:00:00:00:00:02` | `w_temperatur`, `w_lux` |
+| PULSECOUNTER Strom | `02:00:00:00:00:03` | `w_counter1`, `w_power1` |
+| PULSECOUNTER Gas | `02:00:00:00:00:04` | `w_counter1`, `w_power1` |
 
 ## Known limitations / pending work
 
