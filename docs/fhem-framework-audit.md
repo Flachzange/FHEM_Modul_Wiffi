@@ -5,6 +5,16 @@
 **Inspected reference:** `mhop/fhem-mirror`, branch `master`, source snapshots `fhem/fhem.pl` (Git blob `4430a7967aa318c310535082852f77d4ca3482f8`), `fhem/FHEM/TcpServerUtils.pm` (Git blob `678e1c5bd363fd7a2e5fc74df14484886862203d`), `fhem/FHEM/HttpUtils.pm` (Git blob `ff1a6a0eb8eaa713a274acd13624602691098c36`), and `fhem/FHEM/00_MQTT2_SERVER.pm` (Git blob `6203d044750faf121b5903197395c89ea003ea4d`). These identify the **inspected content**, not the revision of an installed FHEM server.  
 **Reference links:** [FHEM core](https://github.com/mhop/fhem-mirror/blob/master/fhem/fhem.pl), [TcpServerUtils](https://github.com/mhop/fhem-mirror/blob/master/fhem/FHEM/TcpServerUtils.pm), [HttpUtils](https://github.com/mhop/fhem-mirror/blob/master/fhem/FHEM/HttpUtils.pm), [module-development guidelines](https://wiki.fhem.de/wiki/DevelopmentModuleIntro), [FHEM commandref](https://commandref.fhem.de/commandref_DE.html).
 
+## Follow-up findings after the original framework audit (2026-10-14)
+
+The audit missed an explicit installed-module version check, since its initial scope centered on lifecycle, FHEM APIs and runtime events. The implementation branch now contains **#18**: matching embedded semantic META versions for the collector/device and the standard `FHEM::Meta::InitMod`/`SetInternals` hooks for `FVERSION`. This follows the documented FHEM Meta mechanism for non-SVN modules; CI verifies syntax, metadata parity and hook presence, **not FVERSION visibility in the installed FHEM process**. Verify that display with a short FHEM smoke check after installing the changed sources, without resurrecting waived comprehensive staging.
+
+**#19** adds a separate `LAST_TELEGRAM` INTERNAL to both module types without Readings/DbLog/events. The collector's timestamp reflects valid decoded/identity-accepted reception (including unknown MACs and disabled logical devices); the device's timestamp reflects successful mapping/processing on an enabled logical device. `t/telegram_internals.t` checks both timestamps, unchanged sensor values, malformed frames, identity mismatch and disabled-device behavior with isolated FHEM callbacks. CI passes 10 test files / 988 tests; live FHEM display remains unverified.
+
+**#20** remains a deliberately open architecture question: native `IODev` registration is not assumed mandatory for the current direct TCP dispatch, and existing DEF syntax remains unchanged.
+
+Reusable lessons were added to `AGENTS.md` and WIFFI-specific behavior to `AGENTS-WIFFI.md`. See the new issues for precise acceptance criteria; the original audit outcomes below remain a historical record of its earlier scope.
+
 ## Framework findings and dispositions
 
 Severity refers to the **practical impact in this WIFFI module**. Source-backed findings come from the referenced FHEM core snapshots; they were **not** byte-compared with the installed server. The installed FHEM revisions and specific live test evidence are now recorded below.
