@@ -19,6 +19,7 @@ sub readingsSingleUpdate {
   $hash->{READINGS}{$key}{VAL} = $value;
 }
 
+require './t/lib/WiffiIOStub.pm';
 require './FHEM/10_WIFFI_DEVICE.pm';
 ok(!defined &WIFFI_Collector_NormalizeMac, 'collector helper not loaded initially');
 
@@ -27,7 +28,9 @@ my $error = WIFFI_DEVICE_Define(\%device,
     'WIFFI_Test WIFFI_DEVICE WIFFI_TestCollector b4:e6:2d:17:db:7');
 is($error, undef, 'device can be defined before collector exists');
 is($load_calls, 1, 'collector code loaded exactly once');
-is($device{COLLECTOR}, 'WIFFI_TestCollector', 'configured collector retained');
+is($device{IODevName}, 'WIFFI_TestCollector',
+  'legacy collector hint retained for deferred core IODev assignment');
+ok(!exists $device{COLLECTOR}, 'no competing COLLECTOR internal');
 is($device{MAC}, 'B4:E6:2D:17:DB:07', 'shared MAC parser normalized value');
 is($device{READINGS}{state}{VAL}, 'waiting', 'device waiting for messages');
 
@@ -71,7 +74,7 @@ my %extra;
 $error = WIFFI_DEVICE_Define(\%extra,
   'WIFFI_Extra WIFFI_DEVICE WIFFI_TestCollector B4:E6:2D:17:DB:07 ignored');
 is($error,
-  'Usage: define <name> WIFFI_DEVICE <collector-name> <mac-address>',
+  'Usage: define <name> WIFFI_DEVICE <mac-address> [legacy: <collector> <mac-address>]',
   'device refuses surplus definition parameters');
 ok(!exists $extra{MAC},'invalid surplus definition does not initialize identity');
 
