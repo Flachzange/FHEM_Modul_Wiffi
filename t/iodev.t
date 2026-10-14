@@ -10,7 +10,7 @@ use lib 't/lib';
 our (%defs, %attr, $init_done, $readingFnAttributes);
 $init_done = 1;
 $readingFnAttributes = '';
-my @closed;
+my (@closed, @attr_commands);
 sub AttrVal {
   my ($name,$key,$default) = @_;
   return exists $attr{$name}{$key} ? $attr{$name}{$key} : $default;
@@ -55,7 +55,10 @@ sub set_io {
 sub CommandAttr {
   my ($cl,$statement) = @_;
   my ($name,$key,$value) = split /\s+/, $statement, 3;
-  return set_io($name,$value) if $key eq 'IODev';
+  if ($key eq 'IODev') {
+    push @attr_commands, "$name IODev $value";
+    return set_io($name,$value);
+  }
   return 'unsupported attribute in test';
 }
 sub packet {
@@ -74,10 +77,19 @@ is($module{Clients}, ':WIFFI_DEVICE:',
 my $one = io('C1');
 my $single = device('Single','02:00:00:00:00:0B');
 is($single->{IODev},$one,'single available collector is auto-selected');
+is($attr{Single}{IODev},'C1',
+  'single collector is saved as real IODev attribute during define');
+is($single->{DEF},'02:00:00:00:00:0B',
+  'single-collector manual DEF remains MAC-only');
+is_deeply(\@attr_commands,['Single IODev C1'],
+  'manual define stores native FHEM attribute via CommandAttr');
+
 my $two = io('C2');
 my $d = device('One','02:00:00:00:00:01');
 ok(!exists $d->{COLLECTOR},'new device has no shadow COLLECTOR internal');
-is(set_io('One','C1'),undef,'explicit IODev assignment accepted');
+ok(!exists $d->{IODev} && !exists $attr{One}{IODev},
+  'MAC-only define with multiple collectors does not select an arbitrary IODev');
+is(set_io('One','C1'),undef,'explicit IODev assignment accepted after define');
 is($d->{IODev},$one,'IODev holds collector hash reference');
 is($d->{DEF},'02:00:00:00:00:01','new definition remains MAC-only');
 WIFFI_Collector_ProcessFrame($one,packet('02:00:00:00:00:01','1'),'192.0.2.1');
@@ -133,31 +145,58 @@ is($d->{READINGS}{w_counter1}{VAL},'4',
   'unbound device never receives telegrams accidentally');
 
 my $legacy = device('Legacy','C1 02:00:00:00:00:09');
-is($legacy->{IODev},$one,'legacy collector name is an IODev hint');
-ok(!exists $legacy->{COLLECTOR},'legacy device also has no shadow COLLECTOR');
-is($legacy->{DEF},'C1 02:00:00:00:00:09',
-  'legacy syntax is preserved pending explicit migration');
-is(set_io('Legacy','C1'),undef,'legacy owner explicitly saved as IODev attribute');
-$legacy->{OLDDEF}=$legacy->{DEF};
-$legacy->{DEF}='02:00:00:00:00:09';
-is(WIFFI_DEVICE_Define($legacy,'Legacy WIFFI_DEVICE 02:00:00:00:00:09'),
-  undef,'legacy device can be modified in-place to new MAC-only syntax');
-delete $legacy->{OLDDEF};
-is($legacy->{IODev},$one,'migration retains assigned collector');
+is($legacy->{IODev},$one,'explicit collector is associated during define');
+ok(!exists $legacy->{COLLECTOR},'explicit device has no shadow COLLECTOR');
 is($legacy->{DEF},'02:00:00:00:00:09',
-  'migration keeps name, device hash and clean DEF');
+  'explicit manual define automatically keeps only MAC in DEF');
+is($attr{Legacy}{IODev},'C1',
+  'explicit manual collector is automatically persisted as IODev attribute');
+like(join('|',@attr_commands), qr/Legacy IODev C1/,
+  'explicit manual definition used CommandAttr');
 is($legacy->{MAC},'02:00:00:00:00:09','migration retains physical MAC');
 WIFFI_Collector_ProcessFrame($one,packet('02:00:00:00:00:09','42'),'192.0.2.9');
 is($legacy->{READINGS}{w_counter1}{VAL},'42','migrated device receives telemetry');
 
 # A configDB restore may read a legacy logical device before the IO parent.
+# Config is already persisted: DefFn must not rewrite it before its attrs load.
 $init_done=0;
+my $previous_attrs = scalar @attr_commands;
 my $deferred=device('Deferred','C3 02:00:00:00:00:0A');
 is($deferred->{IODevMissing},1,'startup defers missing collector binding');
 is($deferred->{IODevName},'C3','deferred owner is specific, never arbitrary');
+is($deferred->{DEF},'C3 02:00:00:00:00:0A',
+  'configDB restore does not silently rewrite pre-existing legacy DEF');
+is(scalar @attr_commands,$previous_attrs,
+  'configDB restore does not create an IODev attribute');
 my $late=io('C3');
 AssignIoPort($deferred,$deferred->{IODevName});
 is($deferred->{IODev},$late,'startup can resolve deferred collector by name');
+is(set_io('Deferred','C3'),undef,'operator can persist IODev after startup');
 $init_done=1;
+$deferred->{OLDDEF} = $deferred->{DEF};
+$deferred->{DEF} = '02:00:00:00:00:0A';
+is(WIFFI_DEVICE_Define($deferred,'Deferred WIFFI_DEVICE 02:00:00:00:00:0A'),
+  undef,'manual modify migrates a restored definition');
+delete $deferred->{OLDDEF};
+is($deferred->{DEF},'02:00:00:00:00:0A',
+  'migration preserves MAC-only DEF');
+is($deferred->{IODev},$late,'migration keeps prior IODev');
+is($attr{Deferred}{IODev},'C3','existing persistent assignment is retained');
+
+# No collector at interactive define: no invented persistent IODev.
+delete $defs{C1}; delete $defs{C2Renamed}; delete $defs{C3};
+my $no_collector = device('NoCollector','02:00:00:00:00:0C');
+ok(!exists $attr{NoCollector}{IODev},
+  'new definition with no collector leaves IODev unset');
+
+# Explicitly named unknown collector must not write an invalid attribute.
+my $invalid = {NAME=>'Invalid',TYPE=>'WIFFI_DEVICE',
+  DEF=>'NoSuchCollector 02:00:00:00:00:0D'};
+$defs{Invalid}=$invalid;
+like(WIFFI_DEVICE_Define($invalid,
+   'Invalid WIFFI_DEVICE NoSuchCollector 02:00:00:00:00:0D'),
+  qr/not defined/, 'invalid explicit collector is rejected');
+ok(!exists $attr{Invalid}{IODev},
+  'rejected explicit definition does not persist an IODev attribute');
 
 done_testing();
