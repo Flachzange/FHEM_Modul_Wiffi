@@ -9,7 +9,9 @@ Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:
 - Uses `vars[].homematic_name` as the FHEM reading name by default. Optionally removes only the leading `w_` per device using `stripReadingPrefix`.
 - Exposes `Systeminfo` fields with a `Systeminfo_` prefix.
 - Reassembles stream fragments delimited by ETX (`0x03`) or EOT (`0x04`); attempts any remaining JSON on TCP EOF.
-- Accepts malformed frames only as errors, never applies partial updates.
+- Validates every supplied `vars[]` entry and every `Systeminfo` field before publishing: malformed names, missing/null values, JSON arrays/objects, duplicate names and cross-namespace collisions reject the entire telegram. No readings, `state`, heartbeat or `FRAMES_OK` are updated; `FRAMES_ERROR` increments and logs the field/index and reason, not the raw payload.
+- Sensor measurements are **optional by presence**: a WEATHERMAN telegram without `w_lux` remains valid (e.g. during a sensor outage). A provided `w_lux` with `null`/malformed data is not valid. No fixed device-specific list of required sensor measurements is imposed without verified firmware evidence.
+- Required envelope fields: a scalar nonempty `modultyp`, a `vars` array, and a `Systeminfo` object with a valid scalar `MAC-Adresse`. Other Systeminfo keys, including `sec_seit_reset`, are accepted if present and valid, but not globally required for unknown firmware variants.
 - No Node-RED, MQTT intermediary, `notify`, polling, or own periodic timer.
 
 ## Installation / continued testing (prefer a non-production FHEM instance)
