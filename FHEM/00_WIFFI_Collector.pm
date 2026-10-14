@@ -99,6 +99,28 @@ sub WIFFI_Collector_Decode {
   };
 }
 
+# Log every rejected frame. Raw payload logging is an explicit opt-in because
+# values can include device identifiers and user-defined names. Escape control
+# characters so a malformed frame cannot forge additional FHEM log entries.
+sub WIFFI_Collector_LogRejected {
+  my ($server, $peer, $reason, $raw) = @_;
+  $reason //= 'unknown error';
+  $reason =~ s/[\x00-\x1F\x7F]/ /g;
+  my $message = "$server->{NAME}: invalid WIFFI from $peer: $reason";
+  if (AttrVal($server->{NAME}, 'logRejectedPayload', 0)) {
+    my $payload = defined $raw ? $raw : '';
+    my $length = length($payload);
+    # Bound log amplification while including normal WIFFI telegrams in full.
+    my $max_log_bytes = 16384;
+    my $truncated = $length > $max_log_bytes;
+    $payload = substr($payload, 0, $max_log_bytes) if $truncated;
+    $payload =~ s/([\x00-\x1F\x7F])/sprintf('\\x%02X', ord($1))/ge;
+    $message .= " | payload ($length bytes".
+      ($truncated ? ', truncated' : '')."): $payload";
+  }
+  Log3($server, 2, $message);
+}
+
 sub WIFFI_Collector_ExtractFrames {
   my ($buffer_ref) = @_;
   my @frames;
@@ -117,7 +139,7 @@ sub WIFFI_Collector_Initialize {
   $hash->{DefFn} = 'WIFFI_Collector_Define';
   $hash->{UndefFn} = 'WIFFI_Collector_Undef';
   $hash->{ReadFn} = 'WIFFI_Collector_Read';
-  $hash->{AttrList} = 'autocreate:0,1 allowfrom '.$readingFnAttributes;
+  $hash->{AttrList} = 'autocreate:0,1 logRejectedPayload:0,1 allowfrom '.$readingFnAttributes;
 }
 
 sub WIFFI_Collector_Define {
@@ -189,7 +211,8 @@ sub WIFFI_Collector_Read {
   $hash->{BUF} .= $chunk;
   if (length($hash->{BUF}) > $server->{MAX_FRAME}) {
     $server->{FRAMES_ERROR}++;
-    Log3($server, 2, "$hash->{NAME}: oversized or unterminated telegram");
+    WIFFI_Collector_LogRejected($server, $hash->{PEER},
+      "$hash->{NAME}: oversized or unterminated telegram", $hash->{BUF});
     CommandDelete(undef, $hash->{NAME});
     return;
   }
@@ -205,7 +228,7 @@ sub WIFFI_Collector_ProcessFrame {
     $server->{FRAMES_ERROR}++;
     my $error = $@ || 'unknown JSON error';
     chomp $error;
-    Log3($server, 2, "$server->{NAME}: invalid WIFFI from $peer: $error");
+    WIFFI_Collector_LogRejected($server, $peer, $error, $raw);
     return;
   }
 
@@ -225,14 +248,16 @@ sub WIFFI_Collector_ProcessFrame {
 
   if (@matches > 1 || $peer_conflict) {
     $server->{FRAMES_ERROR}++;
-    Log3($server, 2, "$server->{NAME}: WIFFI identity conflict from $peer");
+    WIFFI_Collector_LogRejected($server, $peer,
+      'WIFFI identity conflict', $raw);
     return;
   }
   my $device = $matches[0];
   if ($device && defined $device->{PEER} && $device->{PEER} ne $peer) {
     $server->{FRAMES_ERROR}++;
-    Log3($server, 2, "$server->{NAME}: WIFFI MAC changed sender IP: ".
-      "$device->{NAME} ($device->{PEER} -> $peer); check device identity");
+    WIFFI_Collector_LogRejected($server, $peer,
+      "WIFFI MAC changed sender IP: ".
+      "$device->{NAME} ($device->{PEER} -> $peer); check device identity", $raw);
     return;
   }
 
@@ -309,6 +334,8 @@ sub WIFFI_Collector_ProcessFrame {
   # publishing readings, which may trigger reentrant FHEM callbacks.
   if (!WIFFI_DEVICE_Process($device, $packet, $peer)) {
     $server->{FRAMES_ERROR}++;
+    WIFFI_Collector_LogRejected($server, $peer,
+      "reading mapping rejected by $device->{NAME}", $raw);
     return;
   }
   $server->{FRAMES_OK}++;
