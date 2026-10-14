@@ -153,6 +153,16 @@ sub WIFFI_DEVICE_Process {
     $mapped{$name} = $data->{readings}{$reading};
   }
 
+  # The latest valid telegram determines which type-specific commands exist.
+  # A changed type is diagnostic information, not a malformed frame.
+  if (defined $hash->{MODULTYP} && $hash->{MODULTYP} ne $data->{modultyp}) {
+    my ($old, $new) = ($hash->{MODULTYP}, $data->{modultyp});
+    for ($old, $new) {
+      s/[\x00-\x1F\x7F]/ /g;
+      $_ = substr($_, 0, 100);
+    }
+    Log3($hash, 3, "$hash->{NAME}: WIFFI modultyp changed: $old -> $new");
+  }
   $hash->{PEER} = $peer;
   $hash->{MODULTYP} = $data->{modultyp};
   readingsBeginUpdate($hash);
