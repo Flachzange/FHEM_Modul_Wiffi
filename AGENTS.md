@@ -29,7 +29,7 @@ This repository develops an event-driven FHEM integration for the classic STALL 
 ## WIFFI wire protocol and identity contract
 
 - A classic telegram is expected to contain `modultyp`, a `vars` array, and `Systeminfo`. Support documented format variations deliberately; never assume JSON array order is stable.
-- **Public sensor reading names come exactly from `vars[].homematic_name`**, not from `desc`, MQTT aliases, or array indexes. Do not silently prefix or rename them. Reject or explicitly report invalid names/collisions; do not overwrite one value with another.
+- **By default, public sensor reading names match `vars[].homematic_name` exactly**, not `desc`, MQTT aliases, or array indexes. The **only intentional opt-in exception** is the per-device `stripReadingPrefix 1` attribute, which removes a single leading `w_` from those names. Never rename them implicitly. Validate the effective names and reject/report collisions (including collisions introduced by prefix removal) without overwriting values.
 - `vars[].name` is a protocol variable identifier, not the default public reading name. Preserve it as useful internal context when needed for identity/validation.
 - Keep each device's readings on its own logical `WIFFI_DEVICE`; identical `homematic_name` values on *different devices* are valid.
 - Keep `Systeminfo` readings in a separately documented namespace such as `Systeminfo_firmware` and `Systeminfo_sec_seit_reset`, without collisions with sensor readings.
@@ -130,7 +130,7 @@ These requirements are **WIFFI-specific**, not inherited from the other modules:
 - One shared TCP listener, logically separate devices keyed by validated/normalized device identity.
 - Initial protocol targets: WIFFI-pump 2, WEATHERMAN, two PULSECOUNTER2-LAN devices.
 - Expose verified WIFFI-pump 2 convenience setters for `trigger:on:`, `trigger:off:`, and `trigger:<seconds>:`; `on` means indefinitely on. All WIFFI types may expose the deliberately explicit expert `httpGet` command accepting a single validated relative path/query. This command can alter device configuration, so never present it as read-only. Use only the observed validated IPv4 TCP peer as the HTTP host and default port 80, never user-provided scheme/host/port. Disable redirects via FHEM HttpUtils `ignoreredirects => 1` (verified in mhop/fhem-mirror `fhem/FHEM/HttpUtils.pm`); bound length/timeout, reject whitespace, control characters, backslashes, fragments and malformed percent encoding; never synthesize state from HTTP replies. Cancel pending requests on undefine/modify and test concurrent sends, unknown types, redirects and hostile paths. Never expose unrestricted arbitrary absolute URLs or POST.
-- Only `homematic_name` determines sensor reading names; do not preserve earlier Node-RED/MQTT alias names as implicit compatibility output.
+- Only `homematic_name` determines the default sensor reading names; explicit `stripReadingPrefix 1` may remove a single leading `w_` per logical device. Do not preserve earlier Node-RED/MQTT alias names as implicit compatibility output.
 - Sender heartbeat `Systeminfo_sec_seit_reset` should remain usable for external watchdogs; no implicit polling.
 - Existing Node-RED-to-MQTT devices must remain untouched during development and one-by-one migration.
 - Migrating existing FHEM devices requires separately reviewing dependent DOIF, userReadings, averages, `statistics`, DbLog readers, and historical timeseries. Do not silently change production data or automations.
