@@ -283,7 +283,7 @@ WIFFI_Collector_ProcessFrame($server,
 my $typed = $defs{$type_name};
 is($typed->{MODULTYP}, 'wiffi-pump', 'first valid telegram establishes pump type');
 like(WIFFI_DEVICE_Set($typed, $type_name, '?'),
-  qr/choose one of on off on-for-timer httpGet\z/,
+  qr/choose one of on off on-for-timer reset httpGet\z/,
   'pump shortcuts offered for pump type');
 is(scalar(grep {/WIFFI modultyp changed:/} @logs), 0,
   'first observed type does not count as a transition');
@@ -298,16 +298,16 @@ is($typed->{READINGS}{w_counter1}{VAL}, '3', 'changed-type telegram updates read
 is($server->{FRAMES_OK}, 3, 'accepted type switch is a valid frame');
 is($server->{FRAMES_ERROR}, 0, 'accepted type switch is not a frame error');
 like(WIFFI_DEVICE_Set($typed, $type_name, '?'),
-  qr/choose one of counter httpGet\z/,
+  qr/choose one of counter reset httpGet\z/,
   'after type change PULSECOUNTER setter is advertised');
 like(WIFFI_DEVICE_Set($typed, $type_name, 'on'),
-  qr/Unknown argument.*counter httpGet/,
+  qr/Unknown argument.*counter reset httpGet/,
   'old pump on command is refused after type change');
 like(WIFFI_DEVICE_Set($typed, $type_name, 'off'),
-  qr/Unknown argument.*counter httpGet/,
+  qr/Unknown argument.*counter reset httpGet/,
   'old pump off command is refused after type change');
 like(WIFFI_DEVICE_Set($typed, $type_name, 'on-for-timer', 30),
-  qr/Unknown argument.*counter httpGet/,
+  qr/Unknown argument.*counter reset httpGet/,
   'old timer command is refused after type change');
 like(join(' ', @logs), qr/WIFFI modultyp changed: wiffi-pump -> PULSECOUNTER/,
   'type change logged with prior and current type');
@@ -325,7 +325,7 @@ WIFFI_Collector_ProcessFrame($server,
   telegram($type_mac, '192.0.2.29', '5', 'wiffi-pump'), '192.0.2.29');
 is($typed->{MODULTYP}, 'wiffi-pump', 'later pump type restored');
 like(WIFFI_DEVICE_Set($typed, $type_name, '?'),
-  qr/choose one of on off on-for-timer httpGet\z/,
+  qr/choose one of on off on-for-timer reset httpGet\z/,
   'pump shortcuts reappear after a valid pump telegram');
 is($server->{FRAMES_OK}, 5, 'all type transitions accepted');
 is($server->{FRAMES_ERROR}, 0, 'no parser errors from type transitions');
@@ -349,7 +349,7 @@ is($typed->{MODULTYP}, 'wiffi-pump',
 is($typed->{READINGS}{Systeminfo_sec_seit_reset}{VAL}, $before_heartbeat,
   'invalid changed-type telegram does not refresh heartbeat');
 like(WIFFI_DEVICE_Set($typed, $type_name, '?'),
-  qr/choose one of on off on-for-timer httpGet\z/,
+  qr/choose one of on off on-for-timer reset httpGet\z/,
   'invalid changed-type telegram cannot remove pump commands');
 is($server->{FRAMES_ERROR}, 1, 'real invalid packet counted as malformed');
 is(scalar(grep {/WIFFI modultyp changed:/} @logs), 2,
@@ -379,7 +379,7 @@ $typed = $defs{$type_name};
 is($typed->{MODULTYP}, 'PULSECOUNTER',
   'fresh device after restart-like reset accepts first advertised type');
 like(WIFFI_DEVICE_Set($typed, $type_name, '?'),
-  qr/choose one of counter httpGet\z/,
+  qr/choose one of counter reset httpGet\z/,
   'restart-like PULSECOUNTER telegram exposes counter but no pump shortcuts');
 is(scalar(grep {/WIFFI modultyp changed:/} @logs), 0,
   'fresh in-memory type after restart-like reset has no transition log');

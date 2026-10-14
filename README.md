@@ -211,6 +211,25 @@ set WIFFI_PUMP2 on-for-timer 300
 
 The manufacturer documents the HTTP requests `/?trigger:on:` (switch on **indefinitely**), `/?trigger:off:` (switch off), and `/?trigger:300:` (switch on for 300 seconds). Duration is restricted by this module to an integer from 1 to 3600 seconds. The named pump shortcuts are deliberately limited to `wiffi-pump`; arbitrary paths use the separate device-independent `httpGet` setter. Command references: [STALL WIFFI-pump-2 manual](https://www.stall.biz/project/wiffi-pump-2-die-intelligente-steuerung-der-zirkulationspumpe-mit-heizungsueberwachung/) and [STALL command reference PDF](https://www.stall.biz/wp-content/uploads/2016/08/wiffi_update_anleitung22-1.pdf). The manufacturer's changelog lists `wiffi_pump2_110` as a web-server stability update without major functional changes. **Live verification (2026-10-11, firmware `wiffi_pump2_110`):** the FHEMWEB `on`/`off` controls switched the physical pump, and later incoming `wiffi_pump` readings reflected `true`/`false`. `set WIFFI_PUMP2 on-for-timer 30` also started the pump successfully; the exact 30-second expiration was **not independently timed**. These results apply to the tested WIFFI-pump 2 only, not to all WIFFI firmwares or arbitrary `httpGet` paths.
 
+### Device restart
+
+The observed classic WIFFI types `wiffi-pump`, `PULSECOUNTER` and
+`weatherman` expose a `reset` convenience setter:
+
+```text
+set WIFFI_PUMP2 reset
+set WIFFI_PULSECOUNTER_Wasser reset
+set WIFFI_WEATHERMAN reset
+```
+
+It sends the manufacturer-documented `/?reset:` restart command. STALL
+documents this restart path for WIFFI-pump, PULSECOUNTER and WEATHERMAN
+devices. The setter does not synthesize a successful reboot reading: the
+next accepted telemetry is authoritative. In particular,
+`Systeminfo_sec_seit_reset` should begin again at a small value after the
+device reconnects. A successful HTTP response only confirms request handling,
+not that the reboot completed.
+
 ### PULSECOUNTER counter correction
 
 For the observed `PULSECOUNTER` module type the device now exposes one additional convenience setter:
@@ -227,9 +246,22 @@ This setter deliberately satisfies an **observability requirement**: the resulti
 
 Other PULSECOUNTER expert parameters and WEATHERMAN configuration commands are **not** promoted to named setters merely because their web interfaces expose them. Where the configured value is visible only in the device web UI and not in normal WIFFI telemetry, it stays available through the explicit `httpGet` escape hatch until a simple verified telemetry readback exists.
 
-**Dynamic device type:** `WIFFI_DEVICE` takes `modultyp` from every otherwise valid telegram and stores it as the `MODULTYP` INTERNAL. When an established device reports a different type, the transition is logged at **FHEM log level 3** (old → new), but the frame remains valid: readings and heartbeat are updated normally and `FRAMES_ERROR` is not increased. The pump-only `on`, `off` and `on-for-timer` commands are offered **only while the current type is `wiffi-pump`**. The `counter` command is offered only while the current type is exactly `PULSECOUNTER`. Type-specific commands disappear when the device reports another type and return when the matching type is observed again. The explicit `httpGet` command remains available to all types. The observed type is **not persisted**: after a restart or an explicit logical-device `modify`, the first accepted telegram determines it again.
+**Dynamic device type:** `WIFFI_DEVICE` takes `modultyp` from every otherwise valid telegram and stores it as the `MODULTYP` INTERNAL. When an established device reports a different type, the transition is logged at **FHEM log level 3** (old → new), but the frame remains valid: readings and heartbeat are updated normally and `FRAMES_ERROR` is not increased. The pump-only `on`, `off` and `on-for-timer` commands are offered **only while the current type is `wiffi-pump`**. The `counter` command is offered only while the current type is exactly `PULSECOUNTER`. The `reset` command is offered for the observed classic `wiffi-pump`, `PULSECOUNTER` and `weatherman` types. Type-specific commands disappear when the device reports another type and return when the matching type is observed again. The explicit `httpGet` command remains available to all types. The observed type is **not persisted**: after a restart or an explicit logical-device `modify`, the first accepted telegram determines it again.
 
 Existing `stateFormat` and `devStateIcon` attributes are **not changed automatically** on a type transition. Pump defaults are set only on initial autocreate and user-defined attributes must be preserved. If a former pump stops reporting `wiffi_pump`, manually adjust or remove its obsolete display attributes and any automation depending on old readings. The dynamic transition behavior has isolated regression tests, **not a dedicated live FHEM type-switch test**.
+
+### Webinterface link in FHEMWEB
+
+As soon as a logical WIFFI device has learned a validated TCP peer, FHEMWEB
+shows a **WIFFI Webinterface** link both on the device detail page and in the
+room/device overview. The target is always `http://<validated-peer>/` and
+opens in a new tab. No JSON-reported IP address or user-supplied host is used.
+The link disappears until a valid peer is known, for example immediately
+after an explicit `modify`.
+
+The implementation uses FHEM's module `FW_detailFn` integration while
+keeping the standard DeviceOverview enabled; `FW_addDetailToSummary` adds
+the same small link to the room overview.
 
 ### Generic HTTP GET for every WIFFI device
 

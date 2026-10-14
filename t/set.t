@@ -43,9 +43,23 @@ my %module;
 WIFFI_DEVICE_Initialize(\%module);
 is($module{SetFn}, 'WIFFI_DEVICE_Set', 'SetFn registered on logical devices');
 is($module{AttrFn}, 'WIFFI_DEVICE_Attr', 'AttrFn registered on logical devices');
+is($module{FW_detailFn}, 'WIFFI_DEVICE_FwDetail', 'FHEMWEB detail hook registered');
+is($module{FW_deviceOverview}, 1, 'standard FHEM device overview is preserved');
+is($module{FW_addDetailToSummary}, 1, 'webinterface link is also shown in room overview');
 like($module{AttrList}, qr/disable:0,1/, 'device offers disable attribute');
 
 my $device = init();
+is(WIFFI_DEVICE_FwDetail(undef,'Pump',undef,undef),
+  '<a href="http://192.0.2.21/" target="_blank" rel="noopener noreferrer">WIFFI Webinterface</a>',
+  'FHEMWEB exposes device-bound webinterface link from validated TCP peer');
+delete $device->{PEER};
+ok(!defined WIFFI_DEVICE_FwDetail(undef,'Pump',undef,undef),
+  'no webinterface link before a peer is learned');
+$device->{PEER} = 'http://192.0.2.21/';
+ok(!defined WIFFI_DEVICE_FwDetail(undef,'Pump',undef,undef),
+  'unsafe peer string never becomes an external link');
+$device->{PEER} = '192.0.2.21';
+
 my $err = WIFFI_DEVICE_Set($device, 'Pump', 'on');
 is($err, undef, 'on dispatched asynchronously');
 is(scalar @calls, 1, 'single nonblocking HTTP request');
@@ -64,18 +78,32 @@ ok(!exists $device->{'.WIFFI_HTTP'}, 'callback clears inflight state');
 is($device->{READINGS}{wiffi_pump}{VAL}, 'false',
    'HTTP 200 is not interpreted as pump state confirmation');
 
+my $before_reset_uptime = '1234';
+$device->{READINGS}{Systeminfo_sec_seit_reset}{VAL} = $before_reset_uptime;
+$err = WIFFI_DEVICE_Set($device, 'Pump', 'reset');
+is($err, undef, 'documented reset command accepted for pump');
+is($calls[1]{url}, 'http://192.0.2.21/?reset:', 'reset uses documented WIFFI restart path');
+is($device->{READINGS}{Systeminfo_sec_seit_reset}{VAL}, $before_reset_uptime,
+  'reset command does not optimistically reset heartbeat uptime');
+$calls[1]{code} = 200;
+$calls[3]{callback}->($calls[3], '', 'ok');
+is($device->{READINGS}{Systeminfo_sec_seit_reset}{VAL}, $before_reset_uptime,
+  'HTTP 200 is not treated as restart confirmation');
+like(WIFFI_DEVICE_Set($device,'Pump','reset','extra'),qr/Usage/,
+  'reset rejects surplus arguments');
+
 $err = WIFFI_DEVICE_Set($device, 'Pump', 'off');
 is($err, undef, 'off accepted');
-is($calls[1]{url}, 'http://192.0.2.21/?trigger:off:', 'off uses documented command');
-$calls[1]{code} = 404;
-$calls[1]{callback}->($calls[1], '', '');
+is($calls[2]{url}, 'http://192.0.2.21/?trigger:off:', 'off uses documented command');
+$calls[2]{code} = 404;
+$calls[3]{callback}->($calls[3], '', '');
 like(join(' ',@logs), qr/HTTP status 404/, 'HTTP response failure logged');
 ok(!exists $device->{'.WIFFI_HTTP'}, 'failed HTTP response releases busy state');
 
 $err = WIFFI_DEVICE_Set($device, 'Pump', 'on-for-timer', 300);
 is($err, undef, 'timed pump command accepted');
-is($calls[2]{url}, 'http://192.0.2.21/?trigger:300:', 'timed manufacturer command');
-$calls[2]{callback}->($calls[2], 'timeout', '');
+is($calls[3]{url}, 'http://192.0.2.21/?trigger:300:', 'timed manufacturer command');
+$calls[3]{callback}->($calls[3], 'timeout', '');
 like(join(' ',@logs), qr/timeout/, 'transport errors logged');
 ok(!exists $device->{'.WIFFI_HTTP'}, 'timeout releases busy state');
 
@@ -83,7 +111,7 @@ for my $bad ('0','3601','-1','1.5','oops','10;shutdown','001','999999') {
   like(WIFFI_DEVICE_Set($device,'Pump','on-for-timer',$bad),qr/Usage/,
     "reject invalid duration $bad");
 }
-is(scalar @calls, 3, 'invalid duration never causes HTTP call');
+is(scalar @calls, 4, 'invalid duration never causes HTTP call');
 like(WIFFI_DEVICE_Set($device,'Pump','on-for-timer'),qr/Usage/,
   'missing duration is rejected');
 like(WIFFI_DEVICE_Set($device,'Pump','on','extra'),qr/Usage/,
@@ -107,9 +135,16 @@ delete $defs{Collector};
 like(WIFFI_DEVICE_Set($device,'Pump','on'),qr/collector is not defined/,
   'no command with missing associated collector');
 $defs{Collector} = { NAME=>'Collector', TYPE=>'WIFFI_Collector' };
-$device->{MODULTYP} = 'WEATHERMAN';
-like(WIFFI_DEVICE_Set($device,'Pump','on'),qr/Unknown argument.*httpGet/,
-  'no pump shortcuts on other WIFFI types');
+$device->{MODULTYP} = 'weatherman';
+like(WIFFI_DEVICE_Set($device,'Pump','on'),qr/Unknown argument.*reset httpGet/,
+  'weatherman offers reset but no pump shortcuts');
+my $weather_reset = WIFFI_DEVICE_Set($device,'Pump','reset');
+is($weather_reset, undef, 'weatherman exposes documented reset command');
+my $weather_reset_request = $calls[-1];
+is($weather_reset_request->{url}, 'http://192.0.2.21/?reset:',
+  'weatherman reset uses common restart path');
+$weather_reset_request->{code}=200;
+$weather_reset_request->{callback}->($weather_reset_request,'','');
 my $generic = WIFFI_DEVICE_Set($device,'Pump','httpGet','/?param:0:240:');
 is($generic, undef, 'generic GET accepted on WEATHERMAN');
 my $get = $calls[-1];
@@ -141,11 +176,18 @@ like(WIFFI_DEVICE_Set($device,'Pump','httpGet'),qr/Usage/,
   'generic GET requires exactly one path');
 like(WIFFI_DEVICE_Set($device,'Pump','httpGet','/ok','/extra'),qr/Usage/,
   'generic GET rejects multiple path arguments');
-is(scalar @calls, 4, 'invalid generic GET arguments never initiate HTTP');
+is(scalar @calls, 5, 'invalid generic GET arguments never initiate HTTP');
 
 $device->{MODULTYP} = 'PULSECOUNTER';
-like(WIFFI_DEVICE_Set($device,'Pump','on'), qr/Unknown argument.*counter httpGet/,
-  'PULSECOUNTER offers counter but no pump shortcuts');
+like(WIFFI_DEVICE_Set($device,'Pump','on'), qr/Unknown argument.*counter reset httpGet/,
+  'PULSECOUNTER offers counter/reset but no pump shortcuts');
+my $pulse_reset = WIFFI_DEVICE_Set($device,'Pump','reset');
+is($pulse_reset, undef, 'PULSECOUNTER exposes documented reset command');
+my $pulse_reset_request = $calls[-1];
+is($pulse_reset_request->{url}, 'http://192.0.2.21/?reset:',
+  'PULSECOUNTER reset uses common restart path');
+$pulse_reset_request->{code}=200;
+$pulse_reset_request->{callback}->($pulse_reset_request,'','');
 $device->{READINGS}{w_counter2}{VAL} = '143.540';
 my $counter_calls = scalar @calls;
 my $counter = WIFFI_DEVICE_Set($device,'Pump','counter','2','143.550');

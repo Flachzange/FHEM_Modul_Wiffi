@@ -12,6 +12,9 @@ sub WIFFI_DEVICE_Initialize {
   $hash->{UndefFn} = 'WIFFI_DEVICE_Undef';
   $hash->{SetFn} = 'WIFFI_DEVICE_Set';
   $hash->{AttrFn} = 'WIFFI_DEVICE_Attr';
+  $hash->{FW_detailFn} = 'WIFFI_DEVICE_FwDetail';
+  $hash->{FW_deviceOverview} = 1;
+  $hash->{FW_addDetailToSummary} = 1;
   $hash->{AttrList} = 'stripReadingPrefix:0,1 disable:0,1 '.$readingFnAttributes;
 }
 
@@ -70,19 +73,45 @@ sub WIFFI_DEVICE_Undef {
   return undef;
 }
 
+sub WIFFI_DEVICE_ValidPeer {
+  my ($hash) = @_;
+  my $peer = $hash->{PEER} // '';
+  my @octets = split /\./, $peer, -1;
+  return undef unless @octets == 4
+    && !(grep { $_ !~ /\A[0-9]{1,3}\z/ || $_ > 255 } @octets)
+    && $octets[0] >= 1 && $octets[0] <= 223
+    && $octets[0] != 127;
+  return $peer;
+}
+
+sub WIFFI_DEVICE_FwDetail {
+  my ($FW_wname, $name, $room, $pageHash) = @_;
+  my $hash = $defs{$name};
+  return undef unless $hash && $hash->{TYPE} eq 'WIFFI_DEVICE';
+  my $peer = WIFFI_DEVICE_ValidPeer($hash);
+  return undef unless $peer;
+  return qq{<a href="http://$peer/" target="_blank" rel="noopener noreferrer">WIFFI Webinterface</a>};
+}
+
 # Every WIFFI supports an explicit relative HTTP GET path. Named shortcuts
-# are exposed only for verified module types: pump controls for wiffi-pump
-# and counter correction for PULSECOUNTER. HTTP responses never change the
+# are exposed only for verified module types: pump controls for wiffi-pump,
+# counter correction for PULSECOUNTER, and restart for the observed classic
+# wiffi-pump/PULSECOUNTER/weatherman types. HTTP responses never change the
 # authoritative telemetry-driven readings.
 sub WIFFI_DEVICE_Set {
   my ($hash, $name, $cmd, @args) = @_;
-  my $pump = ($hash->{MODULTYP} // '') eq 'wiffi-pump';
-  my $pulse = ($hash->{MODULTYP} // '') eq 'PULSECOUNTER';
-  my $choices = $pump ? 'on off on-for-timer httpGet'
-    : $pulse ? 'counter httpGet'
+  my $type = $hash->{MODULTYP} // '';
+  my $pump = $type eq 'wiffi-pump';
+  my $pulse = $type eq 'PULSECOUNTER';
+  my $weather = $type eq 'weatherman';
+  my $reset = $pump || $pulse || $weather;
+  my $choices = $pump ? 'on off on-for-timer reset httpGet'
+    : $pulse ? 'counter reset httpGet'
+    : $weather ? 'reset httpGet'
     : 'httpGet';
   return "Unknown argument ".($cmd // '').", choose one of $choices"
     unless defined $cmd && ($cmd eq 'httpGet'
+      || ($reset && $cmd eq 'reset')
       || ($pump && $cmd =~ /\A(?:on|off|on-for-timer)\z/)
       || ($pulse && $cmd eq 'counter'));
   return 'WIFFI device is disabled' if AttrVal($name, 'disable', 0) eq '1';
@@ -105,6 +134,9 @@ sub WIFFI_DEVICE_Set {
         && $args[1] =~ /\A(?:0|[1-9][0-9]{0,5})(?:\.[0-9]+)?\z/
         && $args[1] <= 999999;
     $path = "/?counter:$args[0]:$args[1]:";
+  } elsif ($cmd eq 'reset') {
+    return 'Usage: set <device> reset' if @args;
+    $path = '/?reset:';
   } elsif ($cmd eq 'on-for-timer') {
     return 'Usage: set <device> on-for-timer <seconds (1..3600)>'
       unless @args == 1 && $args[0] =~ /\A[1-9][0-9]{0,3}\z/
@@ -122,13 +154,9 @@ sub WIFFI_DEVICE_Set {
 
   # Only target the observed TCP peer, never an untrusted JSON reading.
   # Require a unicast IPv4 address to avoid HTTP URL/host injection.
-  my $peer = $hash->{PEER} // '';
-  my @octets = split /\./, $peer, -1;
+  my $peer = WIFFI_DEVICE_ValidPeer($hash);
   return 'No valid WIFFI TCP peer yet; wait for a fresh telegram'
-    unless @octets == 4
-      && !(grep { $_ !~ /\A[0-9]{1,3}\z/ || $_ > 255 } @octets)
-      && $octets[0] >= 1 && $octets[0] <= 223
-      && $octets[0] != 127;
+    unless defined $peer;
 
   my $param = {
     url      => "http://$peer$path",
@@ -251,6 +279,13 @@ sub WIFFI_DEVICE_Process {
       Switch on for 1 to 3600 seconds using
       <code>/?trigger:&lt;seconds&gt;:</code>. Example:
       <code>set WIFFI_PUMP2 on-for-timer 30</code>.</li>
+  <li><a id="WIFFI_DEVICE-set-reset"></a><b>reset</b>
+      (types <code>wiffi-pump</code>, <code>PULSECOUNTER</code> and
+      <code>weatherman</code>)<br>
+      Restart the WIFFI using the documented <code>/?reset:</code> command.
+      The HTTP response is not proof of a completed restart. Confirmation
+      comes from subsequent telemetry, especially a newly restarted
+      <code>Systeminfo_sec_seit_reset</code> counter.</li>
   <li><a id="WIFFI_DEVICE-set-counter"></a><b>counter</b> &lt;channel&gt; &lt;value&gt;
       (type <code>PULSECOUNTER</code> only)<br>
       Set counter channel 1 to 4 with the documented
@@ -288,6 +323,12 @@ sub WIFFI_DEVICE_Process {
   add or remove these shortcuts.
 </p>
 <a id="WIFFI_DEVICE-attr"></a>
+<p>
+  When FHEMWEB knows a valid TCP peer for the device, the device detail view
+  and room overview include a <b>WIFFI Webinterface</b> link to
+  <code>http://&lt;peer&gt;/</code>. The link uses only the validated source
+  address learned from accepted TCP telemetry and opens in a new browser tab.
+</p>
 <h4>Attributes</h4>
 <ul>
   <li><a id="WIFFI_DEVICE-attr-stripReadingPrefix"></a><b>stripReadingPrefix</b> (0,1; default 0)<br>
@@ -361,6 +402,14 @@ sub WIFFI_DEVICE_Process {
       Schaltet die Pumpe f&uuml;r 1 bis 3600 Sekunden mit
       <code>/?trigger:&lt;Sekunden&gt;:</code> ein. Beispiel:
       <code>set WIFFI_PUMP2 on-for-timer 30</code>.</li>
+  <li><a id="WIFFI_DEVICE-set-reset"></a><b>reset</b>
+      (f&uuml;r <code>wiffi-pump</code>, <code>PULSECOUNTER</code> und
+      <code>weatherman</code>)<br>
+      Startet das WIFFI mit dem dokumentierten Befehl
+      <code>/?reset:</code> neu. Die HTTP-Antwort beweist keinen
+      abgeschlossenen Neustart. Best&auml;tigt wird er erst durch folgende
+      Ger&auml;tetelemetrie, insbesondere einen neu begonnenen Z&auml;hler
+      <code>Systeminfo_sec_seit_reset</code>.</li>
   <li><a id="WIFFI_DEVICE-set-counter"></a><b>counter</b> &lt;Kanal&gt; &lt;Wert&gt;
       (nur <code>PULSECOUNTER</code>)<br>
       Setzt Z&auml;hlerkanal 1 bis 4 mit dem dokumentierten Befehl
@@ -402,6 +451,13 @@ sub WIFFI_DEVICE_Process {
   <code>PULSECOUNTER</code>. Sie passen sich bei einem Typwechsel an.
 </p>
 <a id="WIFFI_DEVICE-attr"></a>
+<p>
+  Sobald FHEMWEB einen g&uuml;ltigen TCP-Peer des Ger&auml;ts kennt, wird in
+  der Ger&auml;tedetailansicht und Raum&uuml;bersicht ein Link
+  <b>WIFFI Webinterface</b> auf <code>http://&lt;peer&gt;/</code> angezeigt.
+  Verwendet wird ausschlie&szlig;lich die validierte Quelladresse aus
+  akzeptierter TCP-Telemetrie; der Link &ouml;ffnet in einem neuen Tab.
+</p>
 <h4>Attribute</h4>
 <ul>
   <li><a id="WIFFI_DEVICE-attr-stripReadingPrefix"></a><b>stripReadingPrefix</b> (0,1; Standard 0)<br>
