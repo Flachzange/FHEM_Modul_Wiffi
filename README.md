@@ -126,11 +126,26 @@ The collector records successful auto-creations in the `AUTOCREATED` internal, a
 
 The WiFFI devices need to push TCP/JSON to FHEM's IP address on port 9192. **Do not change all devices at once**; initially test one device and keep the established Node-RED integrations until proven reliable.
 
-Manual definition without auto-create is also possible:
+Manual definition without auto-create is also possible. The following
+**alternative** syntaxes identify the same device (synthetic example MAC):
 
 ```text
 define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 02:00:00:00:00:01
 ```
+
+Or, instead of the command above:
+
+```text
+define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 020000000001
+```
+
+Both forms (upper- or lowercase hexadecimal) normalize internally to
+`02:00:00:00:00:01`. The original colon-separated format remains supported,
+including one-digit octets. This also works with `modify` and incoming WIFFI
+MAC fields, so there is no duplicate logical device. Other separators,
+mixed formats and MACs with fewer or more than 12 unseparated hexadecimal
+digits are rejected. Existing definitions remain unchanged; no automatic
+configuration rewrite is performed.
 
 For devices already created while the earlier **unfiltered** autocreate defaults were active (such as `WIFFI_DEADBEEFFE00`), add the three attributes manually if desired. For an unfiltered device, remove them using `deleteattr <device> <attribute>`. Updating the collector does **not** retrofit attributes onto existing devices.
 
