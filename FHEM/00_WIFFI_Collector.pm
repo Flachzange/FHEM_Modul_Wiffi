@@ -121,6 +121,8 @@ sub WIFFI_Collector_LogRejected {
   Log3($server, 2, $message);
 }
 
+# Extract each wire frame independently. Keep whitespace for the byte-size check
+# and diagnostic payloads; JSON::PP already permits surrounding whitespace.
 sub WIFFI_Collector_ExtractFrames {
   my ($buffer_ref) = @_;
   my @frames;
@@ -128,8 +130,7 @@ sub WIFFI_Collector_ExtractFrames {
     my $pos = $-[0];
     my $frame = substr($$buffer_ref, 0, $pos, '');
     substr($$buffer_ref, 0, 1, '');
-    $frame =~ s/\A\s+|\s+\z//g;
-    push @frames, $frame if length $frame;
+    push @frames, $frame if $frame =~ /\S/;
   }
   return @frames;
 }
@@ -155,6 +156,13 @@ sub WIFFI_Collector_Define {
   $hash->{FRAMES_ERROR} = 0;
   $hash->{FRAMES_UNKNOWN} = 0;
   $hash->{AUTOCREATED} = 0;
+  # Connection statistics are internals, not readings/events/DbLog records.
+  $hash->{CLIENTS_ACTIVE} = 0;
+  $hash->{CLIENTS_PEAK} = 0;
+  $hash->{CLIENTS_REJECTED} = 0;
+  $hash->{MAX_CLIENTS} = 16;
+  $hash->{CLIENT_IDLE_TIMEOUT} = 60;
+  $hash->{CLIENT_MAX_LIFETIME} = 180;
 
   if ($init_done) {
     return TcpServer_Open($hash, $port, 'global');
@@ -167,9 +175,47 @@ sub WIFFI_Collector_Define {
   return undef;
 }
 
+# One timeout timer per temporary connection, scheduled on accept and then
+# only when the previous timer fires. The last activity time is updated on
+# sysread; the absolute connection lifetime also bounds slow-drip senders.
+sub WIFFI_Collector_ClientTimeout {
+  my ($client) = @_;
+  my $name = $client->{NAME};
+  return unless $defs{$name} && $defs{$name} == $client;
+  my $server = $defs{$client->{SNAME} // ''};
+  return unless $server && $server->{TYPE} eq 'WIFFI_Collector';
+  my $now = Time::HiRes::time();
+  my $idle_deadline = ($client->{'.WIFFI_LAST_ACTIVITY'} // $now)
+                    + ($server->{CLIENT_IDLE_TIMEOUT} // 60);
+  my $life_deadline = ($client->{'.WIFFI_ACCEPTED_AT'} // $now)
+                    + ($server->{CLIENT_MAX_LIFETIME} // 180);
+  if ($now >= $idle_deadline || $now >= $life_deadline) {
+    ++$server->{FRAMES_ERROR};
+    WIFFI_Collector_LogRejected($server, $client->{PEER},
+      $now >= $life_deadline ? 'TCP client lifetime exceeded'
+                            : 'TCP client idle timeout',
+      $client->{BUF});
+    CommandDelete(undef, $name);
+    return;
+  }
+  my $next_deadline = $idle_deadline < $life_deadline
+                    ? $idle_deadline : $life_deadline;
+  InternalTimer($next_deadline, 'WIFFI_Collector_ClientTimeout', $client, 0);
+}
+
 sub WIFFI_Collector_Undef {
   my ($hash) = @_;
   RemoveInternalTimer($hash);
+  # TcpServer_Accept registers temporary children in %defs/%selectlist.
+  # Undef is their common cleanup path (EOF, timeout, read error, shutdown).
+  if (defined $hash->{SNAME}) {
+    my $server = $defs{$hash->{SNAME}};
+    if (delete $hash->{'.WIFFI_COUNTED'} && $server
+        && $server->{TYPE} eq 'WIFFI_Collector') {
+      --$server->{CLIENTS_ACTIVE} if ($server->{CLIENTS_ACTIVE} // 0) > 0;
+    }
+    return TcpServer_Close($hash);
+  }
   for my $name (keys %defs) {
     my $client = $defs{$name};
     next unless $client->{TYPE} eq 'WIFFI_Collector'
@@ -183,7 +229,24 @@ sub WIFFI_Collector_Read {
   my ($hash) = @_;
   if ($hash->{SERVERSOCKET}) {
     my $client = TcpServer_Accept($hash, 'WIFFI_Collector');
-    $client->{CD}->blocking(0) if $client;
+    return unless $client;
+    $client->{CD}->blocking(0);
+    if (($hash->{CLIENTS_ACTIVE} // 0) >= ($hash->{MAX_CLIENTS} // 16)) {
+      ++$hash->{CLIENTS_REJECTED};
+      Log3($hash, 2, "$hash->{NAME}: client limit reached; ".
+        "rejecting $client->{PEER} (max $hash->{MAX_CLIENTS})");
+      CommandDelete(undef, $client->{NAME});
+      return;
+    }
+    $client->{'.WIFFI_COUNTED'} = 1;
+    ++$hash->{CLIENTS_ACTIVE};
+    $hash->{CLIENTS_PEAK} = $hash->{CLIENTS_ACTIVE}
+      if $hash->{CLIENTS_ACTIVE} > ($hash->{CLIENTS_PEAK} // 0);
+    my $now = Time::HiRes::time();
+    $client->{'.WIFFI_ACCEPTED_AT'} = $now;
+    $client->{'.WIFFI_LAST_ACTIVITY'} = $now;
+    InternalTimer($now + ($hash->{CLIENT_IDLE_TIMEOUT} // 60),
+      'WIFFI_Collector_ClientTimeout', $client, 0);
     return;
   }
   my $server = $defs{$hash->{SNAME}};
@@ -201,23 +264,35 @@ sub WIFFI_Collector_Read {
   }
   if ($n == 0) {
     my $tail = $hash->{BUF} // '';
-    $tail =~ s/\A\s+|\s+\z//g;
+    # Some classic WIFFI firmware closes its TCP socket instead of sending
+    # ETX/EOT. EOF is a complete boundary, not permission for partial JSON.
     WIFFI_Collector_ProcessFrame($server, $tail, $hash->{PEER})
-      if length $tail;
+      if $tail =~ /\S/;
     CommandDelete(undef, $hash->{NAME});
     return;
   }
 
+  $hash->{'.WIFFI_LAST_ACTIVITY'} = Time::HiRes::time();
   $hash->{BUF} .= $chunk;
-  if (length($hash->{BUF}) > $server->{MAX_FRAME}) {
-    $server->{FRAMES_ERROR}++;
+  my $max_frame = $server->{MAX_FRAME} // 262144;
+  # First extract ALL complete frames. Their combined size is not limited by
+  # MAX_FRAME; only an individual complete frame or the unfinished tail is.
+  for my $frame (WIFFI_Collector_ExtractFrames(\$hash->{BUF})) {
+    if (length($frame) > $max_frame) {
+      ++$server->{FRAMES_ERROR};
+      WIFFI_Collector_LogRejected($server, $hash->{PEER},
+        "oversized WIFFI frame (".length($frame)." bytes, max $max_frame)",
+        $frame);
+      next;
+    }
+    WIFFI_Collector_ProcessFrame($server, $frame, $hash->{PEER});
+  }
+  if (length($hash->{BUF}) > $max_frame) {
+    ++$server->{FRAMES_ERROR};
     WIFFI_Collector_LogRejected($server, $hash->{PEER},
-      "$hash->{NAME}: oversized or unterminated telegram", $hash->{BUF});
+      "oversized unfinished WIFFI frame (max $max_frame bytes)", $hash->{BUF});
     CommandDelete(undef, $hash->{NAME});
     return;
-  }
-  for my $frame (WIFFI_Collector_ExtractFrames(\$hash->{BUF})) {
-    WIFFI_Collector_ProcessFrame($server, $frame, $hash->{PEER});
   }
 }
 
