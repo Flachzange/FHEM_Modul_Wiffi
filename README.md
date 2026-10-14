@@ -9,7 +9,7 @@ Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:
 - Uses `vars[].homematic_name` as the FHEM reading name by default. Optionally removes only the leading `w_` per device using `stripReadingPrefix`.
 - Exposes `Systeminfo` fields with a `Systeminfo_` prefix.
 - Reassembles stream fragments delimited by ETX (`0x03`) or EOT (`0x04`); attempts any remaining JSON on TCP EOF.
-- Validates `vars[]` and `Systeminfo` before publishing: malformed entries/names, **missing** `vars[].value`, JSON array/object values, duplicate names and cross-namespace collisions reject the entire telegram. On rejection, no readings, `state`, heartbeat or `FRAMES_OK` are updated; `FRAMES_ERROR` increments with a brief diagnostic (not the raw payload). **JSON `null` is accepted** for a present `vars[].value` or optional `Systeminfo` field: it means *no new value*, so only that reading is skipped, retaining its previous value and timestamp. Other valid readings (including a present non-null heartbeat) are updated normally, and the frame counts as `FRAMES_OK`. Optional `name`/`type` metadata may also be `null`.
+- Validates `vars[]` and `Systeminfo` before publishing: malformed entries/names, **missing** `vars[].value`, JSON array/object values, duplicate names and cross-namespace collisions reject the entire telegram. On rejection, no readings, `state`, heartbeat or `FRAMES_OK` are updated; `FRAMES_ERROR` increments and logs the reason at level 2. Rejected JSON payloads can additionally be logged with `attr <collector> logRejectedPayload 1` (default `0`); control characters are escaped to keep entries on one line, and payloads over 16 KiB are truncated explicitly. Repeated errors are logged individually. **JSON `null` is accepted** for a present `vars[].value` or optional `Systeminfo` field: it means *no new value*, so only that reading is skipped, retaining its previous value and timestamp. Other valid readings (including a present non-null heartbeat) are updated normally, and the frame counts as `FRAMES_OK`. Optional `name`/`type` metadata may also be `null`.
 - Sensor measurements are **optional by presence** unless required by verified protocol evidence. **Observed WEATHERMAN behavior:** on the installed hardware, the brightness malfunction reports `w_lux: 0` rather than omitting it; `0` is a valid measurement and must be retained. JSON `null` leaves a previously known value untouched (without refreshing its timestamp); an invalid container value is rejected. A genuinely omitted `w_lux` is not synthesized. No fixed device-specific list of required sensor measurements is imposed without verified firmware evidence.
 - Required envelope fields: a scalar nonempty `modultyp`, a `vars` array, and a `Systeminfo` object with a valid scalar `MAC-Adresse` (identity-only, not a reading). Other Systeminfo keys, including `sec_seit_reset`, are optional; a missing or `null` heartbeat is not synthesized or refreshed.
 - No Node-RED, MQTT intermediary, `notify`, polling, or own periodic timer.
@@ -23,6 +23,16 @@ define WIFFI_Collector WIFFI_Collector 9192
 attr WIFFI_Collector autocreate 1
 attr WIFFI_Collector allowfrom ^192\.168\.5\.(21|22|27|28)$
 ```
+
+### Rejected telegram diagnostics
+
+By default, errors contain the TCP sender and rejection reason, but not the full JSON. To inspect incoming telegrams when parsing, identity validation or reading publication fails, enable:
+
+```text
+attr WIFFI_Collector logRejectedPayload 1
+```
+
+Each rejected frame is logged individually at FHEM log level 2. The opt-in entry includes the original payload (normal telegrams in full, capped at 16 KiB with a `truncated` marker for unusually large data); CR/LF and control bytes are escaped so there is one logical log record per frame. `FRAMES_ERROR` still counts every rejection. Successfully parsed telemetry including `value: null` is **not** logged as an error. Identifiers such as local IP addresses and MACs, and user-defined field values, may be present in the log: enable this on installations where log access and retention are appropriate. This attribute affects only error logging; it does not emit new FHEM readings or DbLog events.
 
 ### Automatic device discovery
 
