@@ -75,7 +75,7 @@ These requirements are **WIFFI-specific**, not inherited from the other modules:
 
 ## WIFFI-specific follow-up responsibilities
 
-- The modules embed English and German FHEM commandref POD sections following FHEM documentation conventions. Keep command anchors and help content synchronized with real setters, attributes and the README; omit implementation TODOs or development-status remarks from user-facing help. `t/commandref.t` checks structural consistency. Separate release verification is described in `docs/release-readiness.md` (issue #8). Issue #9 tracks live FHEM verification of the implemented `disable` attribute.
+- The modules embed English and German FHEM commandref POD sections following FHEM documentation conventions. Keep command anchors and help content synchronized with real setters, attributes and the README; omit implementation TODOs or development-status remarks from user-facing help. `t/commandref.t` checks structural consistency. Separate release verification is described in `docs/release-readiness.md` (issue #8). Issue #9 is closed as implemented; the maintainer confirms live `disable`/`enable` for both module types. Detailed abnormal-lifecycle and HTTP-cancellation checks remain under issue #4.
 - Issue #10 is the FHEM framework compatibility audit. Its [source-backed audit report](docs/fhem-framework-audit.md) separates confirmed fixes, verified FHEM contracts and real-integration gaps. Reusable findings belong in the generic `AGENTS.md`; WIFFI-specific behavior belongs here. Update both when later source evidence changes.
 - Keep `README.md`, automated tests, the lifecycle matrix and Draft PR #1 aligned with demonstrated behavior; do not merge or call this module production-validated without explicit maintainer approval.
 
