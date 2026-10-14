@@ -29,7 +29,7 @@ require './FHEM/10_WIFFI_DEVICE.pm';
 my $collector = {NAME=>'Collector', TYPE=>'WIFFI_Collector', FRAMES_ERROR=>0,
   FRAMES_OK=>0, FRAMES_UNKNOWN=>0};
 $defs{Collector} = $collector;
-my $one = {NAME=>'One',TYPE=>'WIFFI_DEVICE',COLLECTOR=>'Collector',
+my $one = {NAME=>'One',TYPE=>'WIFFI_DEVICE',IODev=>$collector,
   MAC=>'02:00:00:00:00:01'};
 my $two = {NAME=>'Two',TYPE=>'WIFFI_DEVICE',COLLECTOR=>'Collector',
   MAC=>'02:00:00:00:00:02'};
