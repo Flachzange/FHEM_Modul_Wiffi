@@ -215,7 +215,7 @@ This is a low-level **configuration and control command**: issuing HTTP GET on a
 
 The HTTP request uses FHEM's asynchronous `HttpUtils_NonblockingGet` (no external `wget` or polling). It targets only the verified TCP peer address from the last incoming telegram, not the JSON-reported IP reading. Another command is refused while an HTTP request is outstanding (5-second timeout), and outstanding requests are canceled on undefine/modify. After a restart or modify, wait for a fresh TCP telegram before sending commands.
 
-A successful HTTP request is **not confirmation that the relay changed state**. The native `wiffi_pump` reading is updated only by subsequent sensor telemetry, not optimistically by a `set` command. Any transport or HTTP status error is logged, with no additional diagnostic readings. Commands must only be used from a trusted network; the manufacturer's endpoint does not provide cryptographic authentication.
+A successful HTTP request is **not confirmation that the relay changed state**. Successful asynchronous `set` calls suppress FHEM's automatically generated command event; they do not emit a misleading `on`, `off` or `httpGet` event just because an HTTP request started. The native `wiffi_pump` reading is updated only by subsequent sensor telemetry, not optimistically by a `set` command. Any transport or HTTP status error is logged, with no additional diagnostic readings. Commands must only be used from a trusted network; the manufacturer's endpoint does not provide cryptographic authentication.
 
 
 
@@ -237,6 +237,10 @@ A successful HTTP request is **not confirmation that the relay changed state**. 
 - Automatic creation produces stable names from the **full MAC address**. Rename FHEM devices as desired; matching uses collector + MAC, not the name.
 - Existing MQTT-derived reading names (e.g. `gas_vars_2_value`, `aussentemperatur`) are deliberately **not** retained; dependent `userReadings`, statistics, DOIF, and DbLog queries need migration.
 - Systeminfo and numeric readings are preserved as text; the code must not interpret units or coerce implausible counters.
+
+## FHEM framework compatibility audit
+
+The [source-backed FHEM API audit](docs/fhem-framework-audit.md) records concrete framework requirements, the deliberately narrow compatibility fixes and the separation between isolated tests and system-specific verification. Both module-specific `define` commands require exactly their documented argument count; surplus parameters are rejected rather than ignored.
 
 ## FHEM command reference and release procedure
 
