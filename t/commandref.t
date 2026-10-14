@@ -17,7 +17,7 @@ my %required = (
     WIFFI_DEVICE-set-on WIFFI_DEVICE-set-off
     WIFFI_DEVICE-set-on-for-timer WIFFI_DEVICE-set-httpGet
     WIFFI_DEVICE-attr WIFFI_DEVICE-attr-disable
-    WIFFI_DEVICE-attr-stripReadingPrefix
+    WIFFI_DEVICE-attr-IODev WIFFI_DEVICE-attr-stripReadingPrefix
   )],
 );
 
