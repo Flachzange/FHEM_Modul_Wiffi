@@ -580,7 +580,7 @@ sub WIFFI_Collector_ProcessFrame {
       Log3($server, 2, "$server->{NAME}: autocreate name already exists: $name");
     } else {
       my $error = CommandDefine(undef,
-        "$name WIFFI_DEVICE $packet->{mac}");
+        "$name WIFFI_DEVICE $server->{NAME} $packet->{mac}");
       return 0 if $client
         && !WIFFI_Collector_ClientCurrent($client, $server, $generation);
       if ($error) {
@@ -621,6 +621,10 @@ sub WIFFI_Collector_ProcessFrame {
             }
           }
           if ($created) {
+            # The legacy two-argument form supplies the source collector
+            # during autocreate. Once IODev is persisted, keep only MAC in DEF.
+            $created->{DEF} = $packet->{mac}
+              if ($created->{DEF} // '') eq "$server->{NAME} $packet->{mac}";
             $device = $created;
             $server->{AUTOCREATED}++;
             Log3($server, 3, "$server->{NAME}: autocreated $name");
