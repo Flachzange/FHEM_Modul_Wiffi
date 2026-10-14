@@ -147,6 +147,7 @@ sub WIFFI_Collector_Initialize {
   $hash->{SetFn} = 'WIFFI_Collector_Set';
   $hash->{AttrFn} = 'WIFFI_Collector_Attr';
   $hash->{RenameFn} = 'WIFFI_Collector_Rename';
+  $hash->{Clients} = ':WIFFI_DEVICE:';
   $hash->{AttrList} = 'autocreate:0,1 logRejectedPayload:0,1 disable:0,1 allowfrom '.$readingFnAttributes;
   return FHEM::Meta::InitMod(__FILE__, $hash);
 }
@@ -335,11 +336,18 @@ sub WIFFI_Collector_Rename {
     if ($device->{TYPE} eq 'WIFFI_Collector'
         && defined $device->{SNAME} && $device->{SNAME} eq $old) {
       $device->{SNAME} = $new;
-    } elsif ($device->{TYPE} eq 'WIFFI_DEVICE'
-        && ($device->{COLLECTOR} // '') eq $old) {
-      $device->{COLLECTOR} = $new;
+    } elsif ($device->{TYPE} eq 'WIFFI_DEVICE') {
+      next unless ($device->{IODev} && $device->{IODev} == $hash)
+        || AttrVal($device->{NAME}, 'IODev', '') eq $old;
+      # Legacy definitions still contain the old collector name until the
+      # user migrates them. Modern DEF contains only the MAC address.
       $device->{DEF} =~ s/\A\Q$old\E(?=\s)/$new/
         if defined $device->{DEF};
+      if (AttrVal($device->{NAME}, 'IODev', '') eq $old) {
+        my $error = CommandAttr(undef, "$device->{NAME} IODev $new");
+        Log3($hash, 2, "$new: could not update $device->{NAME} IODev: $error")
+          if $error;
+      }
     }
   }
   Log3($hash, 3, "$new: WIFFI collector renamed from $old; ".
@@ -528,7 +536,7 @@ sub WIFFI_Collector_ProcessFrame {
   my $peer_conflict;
   for my $hash (values %defs) {
     next unless $hash->{TYPE} eq 'WIFFI_DEVICE';
-    next unless ($hash->{COLLECTOR} // '') eq $server->{NAME};
+    next unless $hash->{IODev} && $hash->{IODev} == $server;
     if (($hash->{MAC} // '') eq $packet->{mac}) {
       push @matches, $hash;
     } elsif (defined $hash->{PEER} && $hash->{PEER} eq $peer) {
@@ -572,7 +580,7 @@ sub WIFFI_Collector_ProcessFrame {
       Log3($server, 2, "$server->{NAME}: autocreate name already exists: $name");
     } else {
       my $error = CommandDefine(undef,
-        "$name WIFFI_DEVICE $server->{NAME} $packet->{mac}");
+        "$name WIFFI_DEVICE $packet->{mac}");
       return 0 if $client
         && !WIFFI_Collector_ClientCurrent($client, $server, $generation);
       if ($error) {
@@ -582,12 +590,13 @@ sub WIFFI_Collector_ProcessFrame {
         # renamed, changed or deleted the device while it was being created.
         my $created = $defs{$name};
         if ($created && $created->{TYPE} eq 'WIFFI_DEVICE'
-            && ($created->{COLLECTOR} // '') eq $server->{NAME}
+            && $created->{IODev} && $created->{IODev} == $server
             && ($created->{MAC} // '') eq $packet->{mac}) {
           # Defaults apply only at creation, never to existing devices.
           # WIFFI-pump uses its real pump feedback for FHEMWEB status.
           # Do not override attributes set by a DEFINED event handler.
           my @defaults = (
+            ['IODev', $server->{NAME}],
             ['room', 'WIFFI'],
             ['event-on-change-reading', '.*'],
             ['event-on-update-reading', 'Systeminfo_sec_seit_reset'],
@@ -649,7 +658,7 @@ sub WIFFI_Collector_ProcessFrame {
   return 0 unless $defs{$device->{NAME}}
     && $defs{$device->{NAME}} == $device
     && ($device->{'.WIFFI_DEFINITION_GEN'} // 0) == $device_revision
-    && ($device->{COLLECTOR} // '') eq $server->{NAME};
+    && $device->{IODev} && $device->{IODev} == $server;
   ++$server->{FRAMES_OK}
     if $defs{$server->{NAME}} && $defs{$server->{NAME}} == $server;
   return 1;
