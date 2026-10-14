@@ -191,3 +191,191 @@ sub WIFFI_DEVICE_Process {
   return 1;
 }
 1;
+=pod
+=item device
+=item summary Logical receiver and HTTP controller for one WIFFI device
+=item summary_DE Logisches Ger&auml;t f&uuml;r WIFFI-Messwerte und HTTP-Steuerung
+
+=begin html
+
+<a id="WIFFI_DEVICE"></a>
+<h3>WIFFI_DEVICE</h3>
+<p>
+  Represents one STALL WIFFI device attached to a
+  <code>WIFFI_Collector</code>. Valid TCP telegrams update the sensor
+  readings. The default names match <code>vars[].homematic_name</code>
+  from WIFFI JSON, including the <code>w_</code> prefix where present.
+  <code>Systeminfo</code> fields use the <code>Systeminfo_</code> prefix.
+</p>
+<a id="WIFFI_DEVICE-define"></a>
+<h4>Define</h4>
+<ul>
+  <li><code>define &lt;name&gt; WIFFI_DEVICE &lt;collector-name&gt; &lt;MAC-address&gt;</code><br>
+      Define a logical WIFFI sender by its collector and MAC address.
+      The MAC address is normalized for lookup. Example:
+      <code>define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 02:00:00:00:00:01</code>.
+      The collector can also create logical devices automatically when
+      its <code>autocreate</code> attribute is enabled.</li>
+</ul>
+<a id="WIFFI_DEVICE-set"></a>
+<h4>Set</h4>
+<ul>
+  <li><a id="WIFFI_DEVICE-set-on"></a><b>on</b> (type <code>wiffi-pump</code> only)<br>
+      Switch the pump on until turned off, using
+      <code>/?trigger:on:</code>.</li>
+  <li><a id="WIFFI_DEVICE-set-off"></a><b>off</b> (type <code>wiffi-pump</code> only)<br>
+      Switch the pump off using <code>/?trigger:off:</code>.</li>
+  <li><a id="WIFFI_DEVICE-set-on-for-timer"></a><b>on-for-timer</b> &lt;seconds&gt;
+      (type <code>wiffi-pump</code> only)<br>
+      Switch on for 1 to 3600 seconds using
+      <code>/?trigger:&lt;seconds&gt;:</code>. Example:
+      <code>set WIFFI_PUMP2 on-for-timer 30</code>.</li>
+  <li><a id="WIFFI_DEVICE-set-httpGet"></a><b>httpGet</b> &lt;relative-path&gt;<br>
+      Send a GET request to an explicit relative HTTP path/query on the
+      WIFFI device. Available for all WIFFI types. Example:
+      <code>set WIFFI_PUMP2 httpGet /?param:0:240:</code>.
+      This is an expert control command, <b>not read-only</b>:
+      depending on firmware it can change configuration or trigger
+      device operations. Absolute URLs, foreign hosts, fragments and
+      malformed paths are refused.</li>
+</ul>
+<p>
+  HTTP commands use the verified IPv4 address of the last accepted
+  TCP sender, on port 80, with a five-second timeout, no redirects
+  and at most one concurrent request per logical device. A successful
+  HTTP reply does not update pump feedback or other readings;
+  only later received telemetry does.
+  The pump shortcuts are available according to the latest valid
+  <code>modultyp</code>. A changed type can add or remove these shortcuts.
+</p>
+<a id="WIFFI_DEVICE-attr"></a>
+<h4>Attributes</h4>
+<ul>
+  <li><a id="WIFFI_DEVICE-attr-stripReadingPrefix"></a><b>stripReadingPrefix</b> (0,1; default 0)<br>
+      When 1, remove one leading <code>w_</code> from each
+      <code>homematic_name</code> sensor reading. Other reading names
+      are unchanged. The default preserves the original CCU names.
+      Avoid collisions if both prefixed and unprefixed names occur.</li>
+  <li><a id="WIFFI_DEVICE-attr-disable"></a><b>disable</b> (0,1; default 0)<br>
+      When 1, ignore incoming telemetry and do not update this
+      device's readings, state, module type or heartbeat. Other
+      WIFFI devices continue to update. Block all HTTP Set commands
+      and cancel a pending HTTP request. The previous readings and
+      device definition remain. Use <code>disable 0</code> or
+      <code>deleteattr &lt;name&gt; disable</code> to re-enable.</li>
+</ul>
+<a id="WIFFI_DEVICE-readings"></a>
+<h4>Readings and display</h4>
+<ul>
+  <li>Sensor readings use the sender's <code>homematic_name</code>;
+      <code>Systeminfo_sec_seit_reset</code> is available as a heartbeat.
+      A valid telegram updates <code>state</code> to <code>online</code>.</li>
+  <li>On initial autocreate the collector configures
+      <code>event-on-change-reading</code>,
+      <code>event-on-update-reading</code> for the heartbeat, and
+      <code>DbLogExclude</code> for the uptime counter. Newly discovered
+      pumps also receive <code>stateFormat wiffi_pump</code> and
+      <code>devStateIcon true:on false:off</code>. These are ordinary
+      user-editable FHEM attributes, not immutable module settings.</li>
+</ul>
+
+=end html
+
+=begin html_DE
+
+<a id="WIFFI_DEVICE"></a>
+<h3>WIFFI_DEVICE</h3>
+<p>
+  Repr&auml;sentiert ein STALL-WIFFI-Ger&auml;t an einem
+  <code>WIFFI_Collector</code>. G&uuml;ltige TCP-Telegramme
+  aktualisieren die Messwert-Readings. Die Namen entsprechen
+  standardm&auml;&szlig;ig exakt dem JSON-Feld
+  <code>vars[].homematic_name</code>, einschlie&szlig;lich eines
+  vorhandenen <code>w_</code>-Pr&auml;fixes.
+  Systeminformationen verwenden das Pr&auml;fix <code>Systeminfo_</code>.
+</p>
+<a id="WIFFI_DEVICE-define"></a>
+<h4>Define</h4>
+<ul>
+  <li><code>define &lt;name&gt; WIFFI_DEVICE &lt;collector-name&gt; &lt;MAC-Adresse&gt;</code><br>
+      Erstellt ein logisches Ger&auml;t mit Collector und MAC-Adresse.
+      Die MAC-Adresse wird f&uuml;r den Vergleich normalisiert.
+      Beispiel:
+      <code>define WIFFI_PUMP2 WIFFI_DEVICE WIFFI_Collector 02:00:00:00:00:01</code>.
+      Bei aktiviertem <code>autocreate</code> kann der Collector
+      neue Ger&auml;te auch selbst anlegen.</li>
+</ul>
+<a id="WIFFI_DEVICE-set"></a>
+<h4>Set</h4>
+<ul>
+  <li><a id="WIFFI_DEVICE-set-on"></a><b>on</b> (nur <code>wiffi-pump</code>)<br>
+      Schaltet die Pumpe mit <code>/?trigger:on:</code> dauerhaft ein,
+      bis ein Ausschaltbefehl folgt.</li>
+  <li><a id="WIFFI_DEVICE-set-off"></a><b>off</b> (nur <code>wiffi-pump</code>)<br>
+      Schaltet die Pumpe mit <code>/?trigger:off:</code> aus.</li>
+  <li><a id="WIFFI_DEVICE-set-on-for-timer"></a><b>on-for-timer</b> &lt;Sekunden&gt;
+      (nur <code>wiffi-pump</code>)<br>
+      Schaltet die Pumpe f&uuml;r 1 bis 3600 Sekunden mit
+      <code>/?trigger:&lt;Sekunden&gt;:</code> ein. Beispiel:
+      <code>set WIFFI_PUMP2 on-for-timer 30</code>.</li>
+  <li><a id="WIFFI_DEVICE-set-httpGet"></a><b>httpGet</b> &lt;relativer-Pfad&gt;<br>
+      Sendet einen GET-Aufruf mit explizitem relativen HTTP-Pfad und
+      optionaler Query an das WIFFI-Ger&auml;t. F&uuml;r alle
+      WIFFI-Typen verf&uuml;gbar. Beispiel:
+      <code>set WIFFI_PUMP2 httpGet /?param:0:240:</code>.
+      Dies ist ein Expertenbefehl zur Steuerung, <b>kein
+      reiner Lesezugriff</b>. Je nach Firmware k&ouml;nnen dadurch
+      Parameter ver&auml;ndert oder Ger&auml;teaktionen ausgel&ouml;st
+      werden. Absolute URLs, fremde Hosts, Fragmente und
+      ung&uuml;ltige Pfade werden abgewiesen.</li>
+</ul>
+<p>
+  HTTP-Befehle gehen an die zuletzt aus einem g&uuml;ltigen
+  TCP-Telegramm ermittelte IPv4-Absenderadresse, Port 80.
+  Das Timeout betr&auml;gt f&uuml;nf Sekunden; Weiterleitungen und
+  parallele Anfragen an dasselbe logische Ger&auml;t sind gesperrt.
+  Eine erfolgreiche HTTP-Antwort &auml;ndert keine Pumpen- oder
+  Messwert-Readings. Daf&uuml;r ist neue TCP-Telemetrie erforderlich.
+  Die angebotenen Pumpenbefehle richten sich nach dem zuletzt
+  g&uuml;ltigen <code>modultyp</code> und passen sich bei
+  einem Typwechsel an.
+</p>
+<a id="WIFFI_DEVICE-attr"></a>
+<h4>Attribute</h4>
+<ul>
+  <li><a id="WIFFI_DEVICE-attr-stripReadingPrefix"></a><b>stripReadingPrefix</b> (0,1; Standard 0)<br>
+      Entfernt bei 1 genau ein f&uuml;hrendes <code>w_</code>
+      aus jedem Sensor-Reading-Namen (<code>homematic_name</code>).
+      Andere Readings bleiben unver&auml;ndert. Standardm&auml;&szlig;ig
+      bleiben die originalen CCU-Namen erhalten. M&ouml;gliche
+      Namenskollisionen beachten.</li>
+  <li><a id="WIFFI_DEVICE-attr-disable"></a><b>disable</b> (0,1; Standard 0)<br>
+      Mit 1 werden eingehende Telegramme f&uuml;r dieses Ger&auml;t
+      ignoriert: Messwerte, <code>state</code>, Typ und Heartbeat
+      bleiben unver&auml;ndert. Andere WIFFI-Ger&auml;te arbeiten
+      weiter. Alle HTTP-Set-Befehle werden gesperrt; laufende
+      HTTP-Anfragen werden abgebrochen. Definition und bisherige
+      Readings bleiben erhalten. Reaktivierung mit
+      <code>disable 0</code> oder
+      <code>deleteattr &lt;name&gt; disable</code>.</li>
+</ul>
+<a id="WIFFI_DEVICE-readings"></a>
+<h4>Readings und Anzeige</h4>
+<ul>
+  <li>Sensor-Readings stammen aus <code>homematic_name</code>;
+      <code>Systeminfo_sec_seit_reset</code> kann als Lebenszeichen
+      verwendet werden. Ein g&uuml;ltiges Telegramm setzt
+      <code>state</code> auf <code>online</code>.</li>
+  <li>Beim erstmaligen Autocreate setzt der Collector
+      <code>event-on-change-reading</code>,
+      <code>event-on-update-reading</code> f&uuml;r das Lebenszeichen
+      und <code>DbLogExclude</code> f&uuml;r den Uptime-Z&auml;hler.
+      Neue Pumpenger&auml;te erhalten zus&auml;tzlich
+      <code>stateFormat wiffi_pump</code> und
+      <code>devStateIcon true:on false:off</code>.
+      Das sind normale, vom Benutzer &auml;nderbare FHEM-Attribute.</li>
+</ul>
+
+=end html_DE
+
+=cut
