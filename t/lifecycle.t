@@ -398,6 +398,27 @@ is(WIFFI_Collector_Set($h,'Collector','reopen'), undef,
 ok(!exists $defs{client_partial_cleanup}, 'ghost child removed on retry');
 ok(exists $selectlist{'Collector.9195'}, 'single listener available after retry');
 
+# Deleting other children must continue when one child refuses cleanup.
+$h = open_collector(9195);
+my $good_child = fake_client('client_good','Collector');
+my $bad_child = fake_client('client_bad','Collector');
+$h->{CLIENTS_ACTIVE} = 2;
+$refused_delete{client_bad} = 'synthetic bad child refusal';
+$failure = WIFFI_Collector_Set($h,'Collector','reopen');
+like($failure,qr/client_bad.*synthetic bad child refusal/,
+  'mixed cleanup returns the failed child and its cause');
+ok(!exists $defs{client_good}, 'healthy child removed despite another refusal');
+ok(exists $defs{client_bad}, 'refused child remains defined');
+is($h->{CLIENTS_ACTIVE},1, 'exactly one surviving client socket counted');
+is($h->{LISTENER_STATUS},'error', 'mixed cleanup does not rebind the listener');
+ok(!exists $selectlist{'Collector.9195'}, 'listener stopped after mixed cleanup');
+delete $refused_delete{client_bad};
+is(WIFFI_Collector_Set($h,'Collector','reopen'),undef,
+  'manual retry removes remaining client without altering working devices');
+is($h->{CLIENTS_ACTIVE},0, 'mixed cleanup retry releases final client');
+ok(!exists $defs{client_bad} && exists $selectlist{'Collector.9195'},
+  'no old children or orphaned listener remain after retry');
+
 # Even if CommandDelete returns success, the original FHEM child must
 # actually disappear. Check hash identity rather than trusting the return.
 $h = open_collector(9195);
