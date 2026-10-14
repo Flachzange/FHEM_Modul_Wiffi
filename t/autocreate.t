@@ -640,4 +640,42 @@ like($logs[-1], qr/WIFFI identity conflict/,
 like($logs[-1], qr/\Q$identity_packet\E/,
   'identity rejection includes opted-in JSON');
 
+
+# Disabling a logical device suppresses only its telemetry, without causing
+# duplicate autocreate or misleading aggregate frame counters.
+$server = start_case();
+$attr{Collector}{autocreate} = 1;
+my $disabled_mac = '02:00:00:00:00:0A';
+my $disabled_name = 'WIFFI_02000000000A';
+WIFFI_Collector_ProcessFrame($server,
+  telegram($disabled_mac,'192.0.2.31','10','wiffi-pump'),'192.0.2.31');
+my $disabled_device = $defs{$disabled_name};
+is($disabled_device->{READINGS}{w_counter1}{VAL},'10',
+  'initial reading published before device is disabled');
+my $previous_heartbeat = $disabled_device->{READINGS}{Systeminfo_sec_seit_reset}{VAL};
+$attr{$disabled_name}{disable} = 1;
+WIFFI_Collector_ProcessFrame($server,
+  telegram($disabled_mac,'192.0.2.31','999','PULSECOUNTER'),'192.0.2.31');
+is($disabled_device->{READINGS}{w_counter1}{VAL},'10',
+  'disabled device ignores later measurement');
+is($disabled_device->{READINGS}{Systeminfo_sec_seit_reset}{VAL},$previous_heartbeat,
+  'disabled device does not refresh heartbeat');
+is($disabled_device->{MODULTYP},'wiffi-pump',
+  'disabled device does not update module type');
+is($server->{FRAMES_OK},1,'ignored frame is not counted as published');
+is($server->{FRAMES_ERROR},0,'ignored frame is not a malformed frame');
+is($server->{FRAMES_UNKNOWN},0,'disabled registered MAC is still known');
+is($server->{AUTOCREATED},1,'disabled known MAC does not autocreate replacement');
+WIFFI_Collector_ProcessFrame($server,
+  telegram('02:00:00:00:00:0B','192.0.2.32','20'),'192.0.2.32');
+is($server->{FRAMES_OK},2,'another device still updates on shared collector');
+ok($defs{WIFFI_02000000000B},'another MAC can still be autocreated');
+delete $attr{$disabled_name}{disable};
+WIFFI_Collector_ProcessFrame($server,
+  telegram($disabled_mac,'192.0.2.31','30','wiffi-pump'),'192.0.2.31');
+is($disabled_device->{READINGS}{w_counter1}{VAL},'30',
+  're-enabled known MAC immediately resumes telemetry');
+is($server->{FRAMES_OK},3,'re-enabled frame counted as published');
+is($server->{AUTOCREATED},2,'no extra device created on re-enable');
+
 done_testing();
