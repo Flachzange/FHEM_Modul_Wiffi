@@ -16,6 +16,7 @@ sub AttrVal {
   return exists($attr{$name}{$key}) ? $attr{$name}{$key} : $default;
 }
 sub Log3 { push @logs, $_[2]; push @log_levels, $_[1] }
+sub TimeNow { return '2026-10-14 15:00:00' }
 sub readingsSingleUpdate {}
 sub TcpServer_Open { $_[0]{SERVERSOCKET} = 1; return undef }
 sub TcpServer_Close {
