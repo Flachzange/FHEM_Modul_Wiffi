@@ -77,6 +77,14 @@ FHEM's own `TcpServer_Open` currently writes its usual `state=Initialized` **Rea
 
 **Verification limit:** `t/lifecycle.t` exercises the FHEM/TcpServerUtils contracts with a test double for startup, failed/successful bind, repeated failures, manual reopen, modify, rename and cleanup. A real FHEM integration run is still needed for actual socket, `%selectlist`, `reload` and `rereadcfg` semantics; the test matrix is at [`docs/fhem-lifecycle-test-matrix.md`](docs/fhem-lifecycle-test-matrix.md). Issue #9 tracks future `disable` support and is not implemented by this change.
 
+### Synchronous FHEM callbacks during TCP receive
+
+FHEM executes Reading-triggered `notify`/DOIF callbacks synchronously. If an action during the first of several already-buffered TCP telegrams deletes, modifies or reopens the Collector, the old connection is invalidated and **remaining frames from that connection are not delivered**. The same applies if the logical WIFFI_DEVICE handling the frame is deleted or explicitly modified. A simple `rename` of Collector or logical device does **not** interrupt processing as long as the exact original object and listener remain valid.
+
+The implementation checks live FHEM hash identity and the collector listener generation between frames and after device publication. Interrupting an existing batch is logged at **level 3**; it is an intentional lifecycle action and must not increment `FRAMES_ERROR`. Real malformed telegrams still increment `FRAMES_ERROR` and are logged individually at level 2 (optional `logRejectedPayload`). No additional Readings, FHEM events or timers are created.
+
+Regression tests in `t/reentrancy.t` invoke synchronous callbacks while running the real WIFFI modules under a controlled FHEM contract double. This provides regression coverage but does **not** replace live-FHEM validation of socket ownership, selectlist or notify/DOIF callback chains.
+
 ### Automatic device discovery
 
 Enable `autocreate` explicitly with `attr WIFFI_Collector autocreate 1` after restricting `allowfrom` to trusted sources. Each first valid telegram from an unknown normalized MAC then creates a persistent FHEM `WIFFI_DEVICE`. No separate `define` commands are needed for each WIFFI.
@@ -210,7 +218,7 @@ A successful HTTP request is **not confirmation that the relay changed state**. 
 ## Testing
 
 ```sh
-prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t
+prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t t/transport.t t/lifecycle.t t/reentrancy.t
 ```
 
 ## License
