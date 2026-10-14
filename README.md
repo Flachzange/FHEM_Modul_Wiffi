@@ -1,6 +1,6 @@
 # FHEM WIFFI Collector (early prototype)
 
-Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:** direct FHEM TCP reception, autocreate and repeated readings updates were observed on a real WIFFI-pump 2 on 2026-10-10. A WEATHERMAN also supplied live TCP readings in an actual FHEM installation on 2026-10-11. Other device/firmware variants, runtime lifecycle and failure paths still need testing.
+Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:** real FHEM telemetry and autocreate were observed with a WIFFI-pump 2 on 2026-10-10; WEATHERMAN and PULSECOUNTER telemetry were observed on 2026-10-11. WIFFI-pump 2 on/off and a 30-second timer command were also exercised on real hardware on 2026-10-11. Those functional observations do **not** verify every device variant, end-to-end timeout duration, listener lifecycle, reload or failure recovery.
 
 ## Design
 
@@ -176,7 +176,7 @@ set WIFFI_PUMP2 off
 set WIFFI_PUMP2 on-for-timer 300
 ```
 
-The manufacturer documents the HTTP requests `/?trigger:on:` (switch on **indefinitely**), `/?trigger:off:` (switch off), and `/?trigger:300:` (switch on for 300 seconds). Duration is restricted by this module to an integer from 1 to 3600 seconds. The named pump shortcuts are deliberately limited to `wiffi-pump`; arbitrary paths use the separate device-independent `httpGet` setter. Command references: [STALL WIFFI-pump-2 manual](https://www.stall.biz/project/wiffi-pump-2-die-intelligente-steuerung-der-zirkulationspumpe-mit-heizungsueberwachung/) and [STALL command reference PDF](https://www.stall.biz/wp-content/uploads/2016/08/wiffi_update_anleitung22-1.pdf). The manufacturer's changelog lists `wiffi_pump2_110` as a web-server stability update without major functional changes. Actual HTTP control still requires a live test on this firmware.
+The manufacturer documents the HTTP requests `/?trigger:on:` (switch on **indefinitely**), `/?trigger:off:` (switch off), and `/?trigger:300:` (switch on for 300 seconds). Duration is restricted by this module to an integer from 1 to 3600 seconds. The named pump shortcuts are deliberately limited to `wiffi-pump`; arbitrary paths use the separate device-independent `httpGet` setter. Command references: [STALL WIFFI-pump-2 manual](https://www.stall.biz/project/wiffi-pump-2-die-intelligente-steuerung-der-zirkulationspumpe-mit-heizungsueberwachung/) and [STALL command reference PDF](https://www.stall.biz/wp-content/uploads/2016/08/wiffi_update_anleitung22-1.pdf). The manufacturer's changelog lists `wiffi_pump2_110` as a web-server stability update without major functional changes. **Live verification (2026-10-11, firmware `wiffi_pump2_110`):** the FHEMWEB `on`/`off` controls switched the physical pump, and later incoming `wiffi_pump` readings reflected `true`/`false`. `set WIFFI_PUMP2 on-for-timer 30` also started the pump successfully; the exact 30-second expiration was **not independently timed**. These results apply to the tested WIFFI-pump 2 only, not to all WIFFI firmwares or arbitrary `httpGet` paths.
 
 ### Generic HTTP GET for every WIFFI device
 
@@ -208,8 +208,8 @@ A successful HTTP request is **not confirmation that the relay changed state**. 
 
 ## Known limitations / pending work
 
-- Initial WIFFI-pump 2 live test passed; remaining WIFFI model variants, TCP framing edge cases, startup/reload/disable and failure recovery require real FHEM integration tests.
-- Pump and generic HTTP GET commands are implemented but have **not yet been tested against actual WIFFI hardware**; the live test so far covers inbound TCP telemetry only.
+- Real FHEM telemetry was observed for WIFFI-pump 2, WEATHERMAN and one PULSECOUNTER. Other hardware/firmware variants, TCP framing edge cases, startup/reload/disable and listener failure recovery still require live integration tests.
+- **Tested on physical WIFFI-pump 2 (`wiffi_pump2_110`, 2026-10-11):** `on`/`off` switch the pump and `on-for-timer 30` starts it. Timer expiry was not independently measured; generic `httpGet` and HTTP commands on other WIFFI types have **not** been field-tested.
 - No timer-based offline detector: consumers may use the `Systeminfo_sec_seit_reset` reading age.
 - Statistics and listener diagnostics are collector INTERNALS, not Readings. The new `modify`, `rename` and manual `set reopen` paths have isolated regression tests; actual FHEM socket ownership, `reload`, `rereadcfg` and `disable` still need live verification (issues #4/#9).
 - Automatic creation produces stable names from the **full MAC address**. Rename FHEM devices as desired; matching uses collector + MAC, not the name.
@@ -221,6 +221,8 @@ A successful HTTP request is **not confirmation that the relay changed state**. 
 ```sh
 prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t t/transport.t t/lifecycle.t t/reentrancy.t
 ```
+
+This is the same seven-file test command used by `.github/workflows/perl-tests.yml`. It exercises the two real Perl modules against **isolated FHEM contract doubles**, not a full FHEM runtime or live socket/hardware environment. The CI workflow also checks Perl syntax for both modules. Real hardware observations and the **unrun** live-FHEM listener/lifecycle matrix are documented separately in [`docs/fhem-lifecycle-test-matrix.md`](docs/fhem-lifecycle-test-matrix.md).
 
 ## License
 
