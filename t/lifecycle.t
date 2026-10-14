@@ -183,6 +183,12 @@ is(WIFFI_Collector_Define($h, 'Collector WIFFI_Collector invalid'),
    'invalid modify arguments are rejected');
 ok(exists $selectlist{'Collector.9195'},
    'invalid modify does not close a valid listener');
+is(WIFFI_Collector_Define($h,'Collector WIFFI_Collector 9295 surplus'),
+   'Usage: define <name> WIFFI_Collector <tcp-port>',
+   'surplus collector modify argument is rejected');
+ok(exists $selectlist{'Collector.9195'} && !exists $selectlist{'Collector.9295'},
+   'surplus modify argument does not close or move listener');
+
 
 # Successful modify closes the previous listener and clients, then rebinds.
 $h->{OLDDEF} = '9195';
