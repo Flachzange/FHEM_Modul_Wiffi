@@ -9,6 +9,7 @@
 - FHEM `TcpServerUtils.pm` from `mhop/fhem-mirror` (GitHub `master`, content blob `678e1c5bd363fd7a2e5fc74df14484886862203d`, inspected 2026-10-14): `TcpServer_Open` creates a listener, writes `state=Initialized` before binding, and populates `FD`, `PORT` and `%selectlist` on success. `TcpServer_Close` closes sockets and removes corresponding `%selectlist` entries but does not remove the hash's `SERVERSOCKET` key.
 - FHEM `00_MQTT2_SERVER.pm` from the same mirror (file blob `6203d044750faf121b5903197395c89ea003ea4d`): uses `OLDDEF` for modify and offers `set reopen`.
 - FHEM module development and command reference: [RenameFn callback semantics](https://wiki.fhem.de/wiki/DevelopmentModuleIntro); [FHEM rename/rereadcfg](https://fhem.de/commandref_modular_DE.html). `RenameFn($new,$old)` runs after FHEM changes the parent's `%defs` name.
+- FHEM `fhem.pl` from `mhop/fhem-mirror` (inspected 2026-10-14): `CommandDelete` returns immediately and **retains `%defs` and `%selectlist`** when `UndefFn` or `DeleteFn` returns an error. `CommandModify` invokes the module `DefFn` with `OLDDEF` set and restores the old `DEF` if it reports an error. These are the framework contracts for cleanup refusal handling, not guarantees of OS-level socket closure.
 - **Not a live environment revision:** file blob IDs are evidence of the inspected source content, not the revision of the user's installed FHEM.
 
 ## Real FHEM test information (to fill in)
@@ -45,6 +46,7 @@ All rows are **not yet verified on real FHEM**.
 | L15 | EOF/read error/60-s idle/180-s absolute lifetime | Temporary clients removed and `CLIENTS_ACTIVE` reduced; `CLIENTS_TIMEOUT` increments on idle/lifetime expiry, whereas `FRAMES_ERROR` increments only for unfinished non-whitespace data discarded on expiry; listener remains healthy | Not run |
 | L16 | Known device remains after a failed listener bind | Last sensor readings and attributes unchanged; recovery doesn't duplicate autocreated devices | Not run |
 | L17 | Reentrant DOIF/notify triggers `set reopen`, `modify`, `delete` or `rename` during a batched TCP read | Old connection discards queued frames on close/modify/delete; stable hash identity allows rename; no stale reading publication or unexpected frame errors | Not run |
+| L18 | Temporary client `UndefFn`/`DeleteFn` refuses deletion during collector `reopen`, `modify` or `undefine` (failure injection/staging only) | Old listener is closed, no new listener bound, `LISTENER_STATUS=error`, level-1 log and `LISTENER_ERROR` identify the child; surviving open child sockets remain counted in `CLIENTS_ACTIVE`; `modify` returns error and preserves previous definition/port, `undefine` returns error and retains collector; manual recovery after refusal is removed | Not run |
 
 ### Suggested staging checks
 
@@ -64,6 +66,6 @@ From the FHEM host's shell, optionally verify the actual TCP listener using `ss 
 
 `t/reentrancy.t` additionally injects synchronous Reading and DEFINED/ATTR callback actions (listener reopen/modify/delete, client and logical device delete/modify, plus identity-preserving renames). The tests use real WIFFI modules and FHEM contract doubles; actual DOIF/notify behavior, socket lifecycle, and configDB still need validation. 
 
-`t/lifecycle.t` checks callback registration, bind failure and recovery, repeated failure logging, manual reopen, active-child cleanup, correct selectlist key on `modify` and `rename`, deferred startup rename, and undef/redefine behavior. `t/transport.t` checks connection limits and timeouts. Both use isolated FHEM mocks; they do **not** verify the full core event loop, configDB persistence, actual socket handles or select-list lifetime on the target system.
+`t/lifecycle.t` checks callback registration, bind failure and recovery, repeated failure logging, manual reopen, active-child cleanup, failed `CommandDelete` / partial `DeleteFn` cleanup with no false listener recovery, manual retry, correct selectlist key on `modify` and `rename`, deferred startup rename, and undef/redefine behavior. `t/transport.t` checks connection limits and timeouts. Both use isolated FHEM mocks; they do **not** verify the full core event loop, configDB persistence, actual socket handles or select-list lifetime on the target system.
 
 Issue #9 tracks the separate implementation of the standard FHEM `disable` attribute.
