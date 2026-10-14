@@ -21,6 +21,17 @@ sub WIFFI_Collector_NormalizeMac {
   return join ':', @octets;
 }
 
+# Keep values as delivered (including large decimals and boolean strings).
+# Reject JSON containers rather than silently losing a reading.
+sub WIFFI_Collector_ValueText {
+  my ($value, $context) = @_;
+  die "$context: missing or null value" unless defined $value;
+  my $kind = ref($value);
+  return $value ? 'true' : 'false' if $kind eq 'JSON::PP::Boolean';
+  return "$value" if !$kind || $kind eq 'Math::BigInt' || $kind eq 'Math::BigFloat';
+  die "$context: unsupported value type";
+}
+
 sub WIFFI_Collector_Decode {
   my ($raw) = @_;
   die "empty WIFFI telegram" unless defined $raw && length $raw;
@@ -28,32 +39,50 @@ sub WIFFI_Collector_Decode {
   die "expected JSON object" unless ref($obj) eq 'HASH';
   die "missing vars array" unless ref($obj->{vars}) eq 'ARRAY';
   die "missing Systeminfo" unless ref($obj->{Systeminfo}) eq 'HASH';
-  die "missing modultyp" unless defined $obj->{modultyp} && $obj->{modultyp} ne '';
+  die "missing or invalid modultyp"
+    unless defined $obj->{modultyp} && !ref($obj->{modultyp})
+      && length($obj->{modultyp});
 
-  my $mac = WIFFI_Collector_NormalizeMac($obj->{Systeminfo}{'MAC-Adresse'});
+  my $raw_mac = $obj->{Systeminfo}{'MAC-Adresse'};
+  die "missing or invalid MAC-Adresse" unless defined $raw_mac && !ref($raw_mac);
+  my $mac = WIFFI_Collector_NormalizeMac($raw_mac);
   die "missing or invalid MAC-Adresse" unless defined $mac;
 
+  # Decode and validate EVERYTHING before any FHEM reading or heartbeat update.
+  # Optional sensor fields may be absent; provided fields must be well-formed.
   my %readings;
   my $reported_ip;
-  for my $var (@{$obj->{vars}}) {
-    next unless ref($var) eq 'HASH';
+  for my $index (0 .. $#{$obj->{vars}}) {
+    my $var = $obj->{vars}[$index];
+    die "vars[$index]: expected JSON object" unless ref($var) eq 'HASH';
     my $name = $var->{homematic_name};
-    next unless defined $name && $name =~ /\A[A-Za-z_][A-Za-z0-9_.-]*\z/;
-    next unless exists $var->{value} && defined $var->{value};
-    die "duplicate CCU name $name" if exists $readings{$name};
-    my $value = $var->{value};
-    die "unsupported value type for $name"
-      if ref($value) && ref($value) !~ /\A(?:JSON::PP::Boolean|Math::BigInt|Math::BigFloat)\z/;
+    die "vars[$index]: missing or invalid homematic_name"
+      unless defined $name && !ref($name)
+        && $name =~ /\A[A-Za-z_][A-Za-z0-9_.-]*\z/;
+    die "vars[$index]: duplicate CCU name" if exists $readings{$name};
+    die "vars[$index]: reserved state reading" if $name eq 'state';
+    die "vars[$index]: missing or null value"
+      unless exists $var->{value} && defined $var->{value};
+    # Metadata are optional, but malformed provided identifiers/type hints are not.
+    for my $metadata (qw(name type)) {
+      next unless exists $var->{$metadata};
+      die "vars[$index]: invalid $metadata"
+        unless defined $var->{$metadata} && !ref($var->{$metadata});
+    }
+
     $readings{$name} =
-      ref($value) eq 'JSON::PP::Boolean' ? ($value ? 'true' : 'false') : "$value";
-    $reported_ip = "$value" if defined $var->{name} && $var->{name} eq '0';
+      WIFFI_Collector_ValueText($var->{value}, "vars[$index]");
+    $reported_ip = $readings{$name}
+      if exists $var->{name} && $var->{name} eq '0';
   }
 
   for my $key (keys %{$obj->{Systeminfo}}) {
-    next unless $key =~ /\A[A-Za-z_][A-Za-z0-9_.-]*\z/;
-    my $value = $obj->{Systeminfo}{$key};
-    next unless defined $value && !ref($value);
-    $readings{"Systeminfo_$key"} = "$value";
+    die "Systeminfo: invalid field name"
+      unless $key =~ /\A[A-Za-z_][A-Za-z0-9_.-]*\z/;
+    my $name = "Systeminfo_$key";
+    die "Systeminfo: reading name collision" if exists $readings{$name};
+    $readings{$name} =
+      WIFFI_Collector_ValueText($obj->{Systeminfo}{$key}, "Systeminfo");
   }
 
   return {
