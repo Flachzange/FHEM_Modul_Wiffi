@@ -1,6 +1,6 @@
 # FHEM WIFFI Collector (early prototype)
 
-Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:** real FHEM telemetry/autocreate were observed on WIFFI-pump 2, WEATHERMAN and PULSECOUNTER in October 2026. Pump on/off and timer startup, PULSECOUNTER `counter`, `reset`, FHEMWEB's detail link, `reopen`, normal FHEM restart/configDB restoration and `disable`/`enable` of both module types were also confirmed by the maintainer. These observations are **not** evidence for every firmware variant or the unrun port-conflict, `reload`/`rereadcfg`, active-client or failure-injection scenarios.
+Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:** real FHEM telemetry/autocreate were observed on WIFFI-pump 2, WEATHERMAN and PULSECOUNTER in October 2026. Pump on/off and timer startup, PULSECOUNTER `counter`, `reset`, FHEMWEB's detail link, `reopen`, normal FHEM restart/configDB restoration and `disable`/`enable` of both module types were also confirmed by the maintainer. These observations are **not** evidence for every firmware variant or port-conflict, `reload`/`rereadcfg`, active-client or failure-injection scenarios. **The maintainer has explicitly decided not to carry out the remaining comprehensive staging tests**; these scenarios remain unverified, not pending as a release/merge requirement.
 
 ## Design
 
@@ -76,7 +76,7 @@ On `modify WIFFI_Collector <new-port>`, temporary clients and the existing liste
 
 FHEM's own `TcpServer_Open` currently writes its usual `state=Initialized` **Reading** when attempting to open a port, even before bind success. That framework behavior is not used as the listener health indicator; `LISTENER_STATUS` and `LISTENER_ERROR` are not Readings and produce no additional events or DbLog rows.
 
-**Verification limit:** `t/lifecycle.t` exercises FHEM/TcpServerUtils contracts with a test double, including simulated `CommandDelete`/`UndefFn`/`DeleteFn` refusal, partial child cleanup, repeated recovery attempts and lifecycle rollback. These are isolated unit tests; actual socket ownership, `%selectlist`, `reload`, `rereadcfg` and live FHEM failure recovery are not yet verified. The live scenarios are listed in [`docs/fhem-lifecycle-test-matrix.md`](docs/fhem-lifecycle-test-matrix.md), including the unverified `disable` lifecycle scenarios.
+**Verification limit:** `t/lifecycle.t` exercises FHEM/TcpServerUtils contracts with a test double, including simulated `CommandDelete`/`UndefFn`/`DeleteFn` refusal, partial child cleanup, repeated recovery attempts and lifecycle rollback. These are isolated unit tests; actual socket ownership, `%selectlist`, `reload`, `rereadcfg` and live FHEM failure recovery are not fully verified. The maintainer has declined further exhaustive lifecycle/failure-injection testing; the unverified scenarios remain documented in the [historical verification matrix](docs/fhem-lifecycle-test-matrix.md).
 
 ### Standard FHEM `disable` attribute (Issue #9)
 
@@ -298,12 +298,12 @@ MAC addresses below are **synthetic placeholders**, not identifiers of the obser
 
 ## Known limitations / pending work
 
-- Real FHEM telemetry was observed for WIFFI-pump 2, WEATHERMAN and PULSECOUNTER. Manual `reopen`, normal restart with configDB restore and both module types' `disable`/`enable` were positively confirmed. Other firmware variants, special TCP framing, `reload`/`rereadcfg`, port collisions and failure recovery require separate staging tests.
+- Real FHEM telemetry was observed for WIFFI-pump 2, WEATHERMAN and PULSECOUNTER. Manual `reopen`, normal restart with configDB restore and both module types' `disable`/`enable` were positively confirmed. Other firmware variants, special TCP framing, `reload`/`rereadcfg`, port collisions and failure recovery remain **unverified**; further comprehensive staging tests are deliberately **not planned**.
 - **Tested on physical WIFFI-pump 2 (`wiffi_pump2_110`, 2026-10-11):** `on`/`off` switch the pump and `on-for-timer 30` starts it. Timer expiry was not independently measured.
 - **PULSECOUNTER2-LAN (`counter_LAN41`):** the manufacturer's direct `counter` HTTP command changes the physical counter and normal telemetry reports the resulting value (2026-10-11). The maintainer subsequently confirmed that the FHEM `counter` convenience setter works. The exact setter value and a before/after reading transcript were not recorded.
 - Other generic `httpGet` commands and WEATHERMAN configuration actions have not been promoted to convenience setters without telemetry-visible readback.
 - No timer-based offline detector: consumers may use the `Systeminfo_sec_seit_reset` reading age.
-- Statistics and listener diagnostics are collector INTERNALS, not Readings. `reopen` and `disable`/`enable` have successful real-FHEM smoke tests; `modify`, `rename`, `reload`, `rereadcfg`, complete socket cleanup and detailed failure paths remain tracked in [issue #4](https://github.com/Flachzange/FHEM_Modul_Wiffi/issues/4). The implementation issue #9 is closed.
+- Statistics and listener diagnostics are collector INTERNALS, not Readings. `reopen` and `disable`/`enable` have successful real-FHEM smoke tests; `modify`, `rename`, `reload`, `rereadcfg`, complete socket cleanup and detailed failure paths are covered by isolated regression tests but not by individual live acceptance records. The maintainer waived the detailed matrix, as documented in [issue #4](https://github.com/Flachzange/FHEM_Modul_Wiffi/issues/4); #9 is closed.
 - Automatic creation produces stable names from the **full MAC address**. Rename FHEM devices as desired; matching uses collector + MAC, not the name.
 - Existing MQTT-derived reading names (e.g. `gas_vars_2_value`, `aussentemperatur`) are deliberately **not** retained; dependent `userReadings`, statistics, DOIF, and DbLog queries need migration.
 - Systeminfo and numeric readings are preserved as text; the code must not interpret units or coerce implausible counters.
@@ -331,7 +331,7 @@ format follows the [official developer guidelines](https://wiki.fhem.de/wiki/Gui
 prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t t/transport.t t/lifecycle.t t/reentrancy.t t/commandref.t
 ```
 
-This is the same eight-file test command used by `.github/workflows/perl-tests.yml`. The `t/commandref.t` test validates English/German commandref sections, anchor parity and simple HTML tag pairing. It exercises the two real Perl modules against **isolated FHEM contract doubles**, not a full FHEM runtime or live socket/hardware environment. The CI workflow also checks Perl syntax for both modules. Real hardware observations, the completed **partial** FHEM smoke tests and the **incomplete** full listener/lifecycle matrix are documented separately in [`docs/fhem-lifecycle-test-matrix.md`](docs/fhem-lifecycle-test-matrix.md).
+This is the same eight-file test command used by `.github/workflows/perl-tests.yml`. The `t/commandref.t` test validates English/German commandref sections, anchor parity and simple HTML tag pairing. It exercises the two real Perl modules against **isolated FHEM contract doubles**, not a full FHEM runtime or live socket/hardware environment. The CI workflow also checks Perl syntax for both modules. Real hardware observations, the completed **partial** FHEM smoke tests and the deliberately **waived/unverified** full listener/lifecycle matrix are documented separately in [`docs/fhem-lifecycle-test-matrix.md`](docs/fhem-lifecycle-test-matrix.md).
 
 ## License
 
