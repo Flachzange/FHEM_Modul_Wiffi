@@ -14,6 +14,12 @@ Event-driven TCP/JSON collector for classic STALL WIFFI devices. **Experimental:
 - Required envelope fields: a scalar nonempty `modultyp`, a `vars` array, and a `Systeminfo` object with a valid scalar `MAC-Adresse` (identity-only, not a reading). Other Systeminfo keys, including `sec_seit_reset`, are optional; a missing or `null` heartbeat is not synthesized or refreshed.
 - No Node-RED, MQTT intermediary, `notify`, polling, or own periodic timer.
 
+## Module version and last telegram
+
+Both FHEM modules embed matching `FHEM::Meta` version `v0.1.0` (experimental development version; this branch is **not** a published release). FHEM's module metadata mechanism displays the installed module version as the `FVERSION` INTERNAL on each collector and logical device. It identifies the installed FHEM Perl module, not the WIFFI firmware in `Systeminfo_firmware`. The two embedded version values must always agree; `t/meta.t` checks this. No module-version Reading or DbLog event is generated. Confirm the actual `FVERSION` display after installing/reloading both modules in your FHEM instance; CI uses a small metadata contract double, not the real runtime.
+
+Each collector and logical device also exposes a `LAST_TELEGRAM` INTERNAL (local FHEM receive time). The collector reflects the most recent syntactically valid, identity-accepted WIFFI telegram, including an otherwise unknown MAC. Invalid JSON and duplicate/conflicting identities do not advance it. A logical `WIFFI_DEVICE` updates its own timestamp only when an enabled device successfully accepts and maps a telegram; an unchanged sensor value still advances it. Disabling a logical device freezes its own timestamp, but the collector can continue to receive its telegrams. Both INTERNALS start empty after FHEM restart until new data arrive. Neither is a Reading, event, DbLog row or periodic watchdog.
+
 ## Installation / continued testing (prefer a non-production FHEM instance)
 
 Install only `FHEM/00_WIFFI_Collector.pm` and `FHEM/10_WIFFI_DEVICE.pm` in FHEM's `FHEM/` directory. There is no separate parser installation. Then restart test FHEM.
@@ -328,10 +334,10 @@ format follows the [official developer guidelines](https://wiki.fhem.de/wiki/Gui
 ## Testing
 
 ```sh
-prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t t/transport.t t/lifecycle.t t/reentrancy.t t/commandref.t
+prove -I t/lib t/parser.t t/device.t t/autocreate.t t/set.t t/transport.t t/lifecycle.t t/reentrancy.t t/commandref.t t/meta.t t/telegram_internals.t
 ```
 
-This is the same eight-file test command used by `.github/workflows/perl-tests.yml`. The `t/commandref.t` test validates English/German commandref sections, anchor parity and simple HTML tag pairing. It exercises the two real Perl modules against **isolated FHEM contract doubles**, not a full FHEM runtime or live socket/hardware environment. The CI workflow also checks Perl syntax for both modules. Real hardware observations, the completed **partial** FHEM smoke tests and the deliberately **waived/unverified** full listener/lifecycle matrix are documented separately in [`docs/fhem-lifecycle-test-matrix.md`](docs/fhem-lifecycle-test-matrix.md).
+This is the test command used by `.github/workflows/perl-tests.yml`. The `t/commandref.t` test validates English/German commandref sections, anchor parity and simple HTML tag pairing. It exercises the two real Perl modules against **isolated FHEM contract doubles**, not a full FHEM runtime or live socket/hardware environment. The CI workflow also checks Perl syntax for both modules. Real hardware observations, the completed **partial** FHEM smoke tests and the deliberately **waived/unverified** full listener/lifecycle matrix are documented separately in [`docs/fhem-lifecycle-test-matrix.md`](docs/fhem-lifecycle-test-matrix.md).
 
 ## License
 
