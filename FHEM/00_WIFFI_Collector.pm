@@ -620,7 +620,8 @@ sub WIFFI_Collector_ProcessFrame {
               last;
             }
           }
-          if ($created) {
+          if ($created && $created->{IODev} && $created->{IODev} == $server
+              && AttrVal($created->{NAME}, 'IODev', '') eq $server->{NAME}) {
             # The legacy two-argument form supplies the source collector
             # during autocreate. Once IODev is persisted, keep only MAC in DEF.
             $created->{DEF} = $packet->{mac}
