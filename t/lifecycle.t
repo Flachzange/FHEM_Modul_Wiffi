@@ -10,7 +10,7 @@ use lib 't/lib';
 our (%defs, %attr, %selectlist, $init_done, $readingFnAttributes);
 $init_done = 1;
 $readingFnAttributes = '';
-my (%blocked_port, %refused_delete, %refused_after_undef,
+my (%blocked_port, %refused_delete, %refused_after_undef, %silent_delete,
     @logs, @log_levels, @timers, @closed, @opened, @deleted);
 
 sub readingsSingleUpdate {}
@@ -62,6 +62,7 @@ sub CommandDelete {
   my $hash = $defs{$name};
   return "not defined: $name" unless $hash;
   return $refused_delete{$name} if $refused_delete{$name};
+  return undef if $silent_delete{$name}; # Simulate a buggy/no-op deletion.
   my $error = WIFFI_Collector_Undef($hash);
   return $error if $error;
   # Mimic a DeleteFn error after UndefFn already closed the socket.
@@ -76,7 +77,7 @@ require './FHEM/00_WIFFI_Collector.pm';
 
 sub reset_case {
   (%defs, %attr, %selectlist, %blocked_port, %refused_delete,
-   %refused_after_undef) = ();
+   %refused_after_undef, %silent_delete) = ();
   (@logs, @log_levels, @timers, @closed, @opened, @deleted) = ();
   $init_done = 1;
   my $hash = { NAME => 'Collector', TYPE => 'WIFFI_Collector' };
@@ -301,7 +302,8 @@ my $old_logs = scalar @logs;
 my $failure = WIFFI_Collector_Set($h, 'Collector', 'reopen');
 like($failure, qr/client_stuck/, 'set reopen returns refused cleanup as an error');
 is($h->{LISTENER_STATUS}, 'error', 'failed cleanup leaves listener in error');
-like($h->{LISTENER_ERROR}, qr/client_stuck/, 'cleanup reason exposed via INTERNAL');
+like($h->{LISTENER_ERROR}, qr/client_stuck.*synthetic UndefFn refused deletion/,
+  'LISTENER_ERROR includes specific refused child and underlying cause');
 is($h->{CLIENTS_ACTIVE}, 1, 'live child remains counted after failed deletion');
 is($h->{CLIENTS_TIMEOUT}, 2, 'cleanup error preserves timeout history');
 ok(exists $defs{client_stuck} && $defs{client_stuck} == $stuck,
@@ -395,5 +397,24 @@ is(WIFFI_Collector_Set($h,'Collector','reopen'), undef,
   'manual retry cleans ghost device and reopens listener');
 ok(!exists $defs{client_partial_cleanup}, 'ghost child removed on retry');
 ok(exists $selectlist{'Collector.9195'}, 'single listener available after retry');
+
+# Even if CommandDelete returns success, the original FHEM child must
+# actually disappear. Check hash identity rather than trusting the return.
+$h = open_collector(9195);
+my $unremoved = fake_client('client_silent_noop','Collector');
+$h->{CLIENTS_ACTIVE} = 1;
+$silent_delete{client_silent_noop} = 1;
+$failure = WIFFI_Collector_Set($h,'Collector','reopen');
+like($failure,qr/client_silent_noop.*temporary client still defined/,
+  'silent no-op delete is detected despite empty CommandDelete result');
+is($h->{CLIENTS_ACTIVE},1,'undeleted socket remains counted');
+is($h->{LISTENER_STATUS},'error','silent no-op does not reopen listener');
+ok(!exists $selectlist{'Collector.9195'},
+  'listener is closed on silent child deletion failure');
+delete $silent_delete{client_silent_noop};
+is(WIFFI_Collector_Set($h,'Collector','reopen'),undef,
+  'retry removes the original child after silent no-op is fixed');
+ok(!exists $defs{client_silent_noop} && !exists $selectlist{client_silent_noop},
+  'recovery cleans original child and selection');
 
 done_testing();
