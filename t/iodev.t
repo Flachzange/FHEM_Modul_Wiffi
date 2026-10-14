@@ -52,6 +52,12 @@ sub set_io {
   AssignIoPort($defs{$name},$value);
   return undef;
 }
+sub CommandAttr {
+  my ($cl,$statement) = @_;
+  my ($name,$key,$value) = split /\s+/, $statement, 3;
+  return set_io($name,$value) if $key eq 'IODev';
+  return 'unsupported attribute in test';
+}
 sub packet {
   my ($mac,$value) = @_;
   return JSON::PP::encode_json({
@@ -89,6 +95,13 @@ WIFFI_Collector_ProcessFrame($one,packet('02:00:00:00:00:01','3'),'192.0.2.1');
 is($d->{READINGS}{w_counter1}{VAL},'1','former collector no longer routes');
 WIFFI_Collector_ProcessFrame($two,packet('02:00:00:00:00:01','4'),'192.0.2.2');
 is($d->{READINGS}{w_counter1}{VAL},'4','new collector routes and learns peer');
+# A physical IO rename changes the provider name before its RenameFn runs.
+$defs{C2Renamed}=delete $defs{C2};
+$two->{NAME}='C2Renamed';
+WIFFI_Collector_Rename('C2Renamed','C2');
+is($d->{IODev},$two,'renamed collector keeps the same IODev reference');
+is($attr{One}{IODev},'C2Renamed','rename persists updated IODev attribute');
+
 like(WIFFI_DEVICE_Attr('set','One','IODev','NoSuchDevice'),
   qr/IODev must be/, 'nonexistent IO device rejected while FHEM is running');
 $defs{Dummy} = {NAME=>'Dummy',TYPE=>'dummy'};
