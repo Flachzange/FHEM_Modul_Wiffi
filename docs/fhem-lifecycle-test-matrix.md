@@ -2,7 +2,7 @@
 
 **Issue:** [#4](https://github.com/Flachzange/FHEM_Modul_Wiffi/issues/4)  
 **Implementation branch:** `feat/tcp-collector-initial`  
-**Status (2026-10-14):** isolated regression tests pass (8 test files / 955 tests). In the actual FHEM installation, telemetry, manual `reopen`, regular restart with configDB restore and `disable`/`enable` of both module types have been confirmed. **The full L01–L18/D01–D08 staging matrices have not been executed.** Where live reports address only part of a row, they are explicitly labeled *partial*, not fully passed.
+**Status (2026-10-14):** isolated regression tests pass (8 test files / 955 tests). Real-FHEM telemetry, `reopen`, regular restart with configDB restore and `disable`/`enable` of both module types have been confirmed. **Maintainer decision: the remaining comprehensive L01–L18/D01–D08 staging/failure-injection tests will not be performed.** Historical unexecuted rows remain marked *Not run*, not *PASS*. This matrix is a record of verified behavior and consciously unverified scenarios, **not a pending test plan**. Investigate these paths only if a concrete defect is observed later.
 
 ## Inspected reference behavior
 
@@ -23,7 +23,7 @@ These observations were recorded during project development; they do not prove u
 | 2026-10-11 | PULSECOUNTER2-LAN (`counter_LAN41`), real FHEM | TCP-derived counters/readings and automatic creation observed on one physical device | Other PULSECOUNTER units, sustained reliability or overall error-free operation |
 | 2026-10-11 | WIFFI-pump 2 (`wiffi_pump2_110`), actual hardware | FHEMWEB `on` and `off` physically switched pump; subsequent `wiffi_pump` readings changed accordingly; `on-for-timer 30` started pump | Precise timer expiration not independently timed; generic `httpGet` and HTTP commands on other device types not field-tested |
 
-## Live FHEM evidence and dedicated staging environment
+## Live FHEM evidence and waiver of dedicated staging
 
 | Item | Actual value |
 | --- | --- |
@@ -32,11 +32,11 @@ These observations were recorded during project development; they do not prove u
 | Host / platform / configuration backend (file or configDB) | **configDB active**, explicitly confirmed; host/platform details not recorded |
 | Tested WIFFI collector port(s) | **9195**; listener `WIFFI_Collector.9195` observed in `%selectlist` |
 | Firmware/model and observed TCP framing | WIFFI-pump 2 `wiffi_pump2_110`, PULSECOUNTER2-LAN `counter_LAN41`, WEATHERMAN observed; no complete per-device framing characterization in the live test record |
-| Date of dedicated lifecycle staging run | **NOT RUN**; partial normal-operation checks reported on **2026-10-14** |
+| Dedicated lifecycle staging run | **Not performed and no longer planned (maintainer decision, 2026-10-14)**; targeted normal-operation checks recorded on that date |
 
 ## Lifecycle acceptance matrix
 
-The **complete** lifecycle scenarios remain unverified in staging. The following *partial live evidence* is recorded, but does not establish all conditions of the corresponding acceptance rows:
+The **complete** lifecycle scenarios remain unverified in staging, and executing them has been **explicitly waived** by the maintainer. The following *partial live evidence* does not establish all conditions of the corresponding acceptance rows:
 
 - **Listener/normal traffic:** `LISTENER_STATUS=listening`, `LISTENER_ERROR` empty, `WIFFI_Collector.9195` present once in `%selectlist`; at one snapshot `CONNECTS=243`, `FRAMES_OK=243`, `FRAMES_ERROR=0`, `CLIENTS_ACTIVE=0`, `CLIENTS_PEAK=2`.
 - **Manual `set WIFFI_Collector reopen`:** maintainer confirms it worked and telemetry/listener remained usable afterward. Does not establish simultaneous-active-client cleanup or a failed-bind recovery scenario.
@@ -65,9 +65,9 @@ The **complete** lifecycle scenarios remain unverified in staging. The following
 | L17 | Reentrant DOIF/notify triggers `set reopen`, `modify`, `delete` or `rename` during a batched TCP read | Old connection discards queued frames on close/modify/delete; stable hash identity allows rename; no stale reading publication or unexpected frame errors | Not run |
 | L18 | Temporary client `UndefFn`/`DeleteFn` refuses deletion during collector `reopen`, `modify` or `undefine` (failure injection/staging only) | Old listener is closed, no new listener bound, `LISTENER_STATUS=error`, level-1 log and `LISTENER_ERROR` identify the child; surviving open child sockets remain counted in `CLIENTS_ACTIVE`; `modify` returns error and preserves previous definition/port, `undefine` returns error and retains collector; manual recovery after refusal is removed | Not run |
 
-### Suggested staging checks
+### Historical optional diagnostic procedures (not scheduled)
 
-Use a **test FHEM instance**, not the production collector, for disruptive operations (port conflicts, `modify`, `rereadcfg`, `reload`, rename and restart).
+These commands are retained as diagnostic references, **not as a request or plan to carry out the waived tests**. If a future real defect ever justifies disruptive reproduction, use a **test FHEM instance**, not the production collector, for port conflicts, `modify`, `rereadcfg`, `reload`, rename and restart.
 
 In the FHEM command field:
 
@@ -87,7 +87,7 @@ From the FHEM host's shell, optionally verify the actual TCP listener using `ss 
 
 ## FHEM `disable` integration acceptance (Issue #9)
 
-The `disable` contract has isolated regression tests in `t/lifecycle.t`, `t/autocreate.t` and `t/set.t`. The maintainer additionally confirms successful real-FHEM `disable`/`enable` of both module types (2026-10-14). **The detailed D01–D08 scenario-specific checks are still incomplete**; the confirmations are partial evidence only.
+The `disable` contract has isolated regression tests in `t/lifecycle.t`, `t/autocreate.t` and `t/set.t`. The maintainer additionally confirms successful real-FHEM `disable`/`enable` of both module types (2026-10-14). **The detailed D01–D08 checks were not completed and will not be scheduled**; the confirmations are partial evidence only.
 
 | ID | Scenario | Expected live observation | Live status |
 | --- | --- | --- | --- |
@@ -100,5 +100,5 @@ The `disable` contract has isolated regression tests in `t/lifecycle.t`, `t/auto
 | D07 | Disabled WIFFI_DEVICE HTTP control and outstanding asynchronous request | All commands refused, in-flight request canceled, late callback inert; `disable 0` restores control | Not run |
 | D08 | `deleteattr <WIFFI_DEVICE> disable` and re-enable after FHEM restart | Next valid telegram updates original device; no stale heartbeat/peer or extra device | Not run |
 
-Use a staging FHEM setup. Record the actual FHEM revision/configuration backend, `list` output, socket/selectlist observations, the tested TCP peer/port and relevant logs. Test asynchronous command cancellation on a noncritical output. Do not mark these rows verified based only on the isolated Perl tests.
+These unexecuted checks are retained solely to describe residual risks; **there is no pending staging acceptance task**. If future troubleshooting requires reproducing an observed failure, use a staging FHEM setup and record relevant FHEM version, sockets, logs and results. Do not mark rows verified based on isolated Perl tests.
 
