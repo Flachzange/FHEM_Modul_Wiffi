@@ -222,6 +222,7 @@ sub WIFFI_Collector_Define {
   $hash->{CLIENTS_ACTIVE} = 0;
   $hash->{CLIENTS_PEAK} = 0;
   $hash->{CLIENTS_REJECTED} = 0;
+  $hash->{CLIENTS_TIMEOUT} = 0;
   $hash->{MAX_CLIENTS} = 16;
   $hash->{CLIENT_IDLE_TIMEOUT} = 60;
   $hash->{CLIENT_MAX_LIFETIME} = 180;
@@ -298,11 +299,20 @@ sub WIFFI_Collector_ClientTimeout {
   my $life_deadline = ($client->{'.WIFFI_ACCEPTED_AT'} // $now)
                     + ($server->{CLIENT_MAX_LIFETIME} // 180);
   if ($now >= $idle_deadline || $now >= $life_deadline) {
-    ++$server->{FRAMES_ERROR};
-    WIFFI_Collector_LogRejected($server, $client->{PEER},
-      $now >= $life_deadline ? 'TCP client lifetime exceeded'
-                            : 'TCP client idle timeout',
-      $client->{BUF});
+    ++$server->{CLIENTS_TIMEOUT};
+    my $reason = $now >= $life_deadline
+      ? 'TCP client lifetime exceeded' : 'TCP client idle timeout';
+    my $tail = $client->{BUF} // '';
+    if ($tail =~ /\S/) {
+      # Count only a discarded unfinished telegram as a frame error.
+      # Empty/whitespace-only buffers may follow entirely valid telegrams.
+      ++$server->{FRAMES_ERROR};
+      WIFFI_Collector_LogRejected($server, $client->{PEER},
+        "$reason; incomplete WIFFI frame discarded", $tail);
+    } else {
+      Log3($server, 3, "$server->{NAME}: $reason for $name ".
+        "($client->{PEER}); no incomplete frame");
+    }
     CommandDelete(undef, $name);
     return;
   }
