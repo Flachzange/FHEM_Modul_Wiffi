@@ -16,6 +16,7 @@ sub AttrVal {
   return exists $attr{$name}{$key} ? $attr{$name}{$key} : $default;
 }
 sub readingsSingleUpdate { $_[0]{READINGS}{$_[1]}{VAL} = $_[2] }
+require './t/lib/WiffiIOStub.pm';
 require './FHEM/00_WIFFI_Collector.pm';
 require './FHEM/10_WIFFI_DEVICE.pm';
 
@@ -30,7 +31,7 @@ sub init {
   my $d = {
     NAME => 'Pump',
     TYPE => 'WIFFI_DEVICE',
-    COLLECTOR => 'Collector',
+    IODev => $defs{Collector},
     MAC => '02:00:00:00:00:01',
     MODULTYP => 'wiffi-pump',
     PEER => '192.0.2.21',
@@ -48,6 +49,7 @@ is($module{FW_deviceOverview}, 1, 'standard FHEM device overview is preserved');
 ok(!defined $module{FW_addDetailToSummary},
   'FHEMWEB does not add a separate link row in room overview');
 like($module{AttrList}, qr/disable:0,1/, 'device offers disable attribute');
+like($module{AttrList}, qr/IODev/, 'device supports native IODev attribute');
 
 my $device = init();
 is(WIFFI_DEVICE_FwDetail(undef,'Pump',undef,undef),
