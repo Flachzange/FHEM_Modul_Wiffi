@@ -53,6 +53,30 @@ A complete frame larger than `MAX_FRAME` is rejected and counted as `FRAMES_ERRO
 
 `CLIENTS_ACTIVE`, `CLIENTS_PEAK`, `CLIENTS_REJECTED`, `MAX_CLIENTS`, `CLIENT_IDLE_TIMEOUT`, and `CLIENT_MAX_LIFETIME` are **INTERNALS**, not Readings. No new events, DbLog rows, or polling are generated for statistics. Counters reset on collector definition/redefinition and are not persisted as historical totals. The isolated transport tests cover client-count changes, frame boundaries and timeouts, but cleanup in a **real FHEM process**, including `%selectlist` and socket ownership across shutdown/reload/modify, still needs the live integration matrix in issues #3 and #4.
 
+### Listener lifecycle, manual recovery and logging
+
+The collector registers a manual `set reopen` command. There are **no automatic bind retries** or background retry loops. The effective listener status is exposed **only through INTERNALS**:
+
+| INTERNAL | Meaning |
+| --- | --- |
+| `LISTENER_STATUS` | `stopped` during deferred startup or after close/undefine, `listening` after a successful bind, or `error` after a failed bind |
+| `LISTENER_ERROR` | The last TCP bind error (empty on a successful bind or a new definition) |
+| `TCP_PORT` | Desired configured TCP port, retained after a failed bind for recovery |
+
+After a port conflict or other bind failure, the WIFFI collector definition remains present. The failure is recorded in `LISTENER_ERROR`, with the port, underlying error text and recovery instruction at **FHEM log level 1**. Every failed attempt is logged individually. After resolving the cause, run:
+
+```text
+set WIFFI_Collector reopen
+```
+
+`reopen` closes the old listener **and all accepted temporary client connections**, clears stale FHEM listener/socket metadata and binds the configured port again. If the bind still fails, the command returns the error, `LISTENER_STATUS` remains `error`, and the error is logged again. Successful opens, listener closes and renames are recorded at **log level 3**. These lifecycle messages are independent of `logRejectedPayload`, which controls *only* inclusion of raw rejected JSON in frame diagnostics.
+
+On `modify WIFFI_Collector <new-port>`, the existing listener and temporary TCP clients are closed before binding the new port. Invalid port syntax is rejected without shutting down an already working listener. The collector's per-definition counters are reset on successful redefinition. `rename` migrates the active listener select-list entry, temporary client parent references and the `COLLECTOR`/`DEF` references of its logical WIFFI_DEVICE children, preserving sensor readings and user attributes. Rename is an explicit administrative action; downstream references to the old collector name outside the module (e.g. in user automations) may need updating.
+
+FHEM's own `TcpServer_Open` currently writes its usual `state=Initialized` **Reading** when attempting to open a port, even before bind success. That framework behavior is not used as the listener health indicator; `LISTENER_STATUS` and `LISTENER_ERROR` are not Readings and produce no additional events or DbLog rows.
+
+**Verification limit:** `t/lifecycle.t` exercises the FHEM/TcpServerUtils contracts with a test double for startup, failed/successful bind, repeated failures, manual reopen, modify, rename and cleanup. A real FHEM integration run is still needed for actual socket, `%selectlist`, `reload` and `rereadcfg` semantics; the test matrix is at [`docs/fhem-lifecycle-test-matrix.md`](docs/fhem-lifecycle-test-matrix.md). Issue #9 tracks future `disable` support and is not implemented by this change.
+
 ### Automatic device discovery
 
 Enable `autocreate` explicitly with `attr WIFFI_Collector autocreate 1` after restricting `allowfrom` to trusted sources. Each first valid telegram from an unknown normalized MAC then creates a persistent FHEM `WIFFI_DEVICE`. No separate `define` commands are needed for each WIFFI.
@@ -178,7 +202,7 @@ A successful HTTP request is **not confirmation that the relay changed state**. 
 - Initial WIFFI-pump 2 live test passed; remaining WIFFI model variants, TCP framing edge cases, startup/reload/disable and failure recovery require real FHEM integration tests.
 - Pump and generic HTTP GET commands are implemented but have **not yet been tested against actual WIFFI hardware**; the live test so far covers inbound TCP telemetry only.
 - No timer-based offline detector: consumers may use the `Systeminfo_sec_seit_reset` reading age.
-- Statistics counters are internals on the collector; diagnostic readings and reload/modify/disable behavior need validation.
+- Statistics and listener diagnostics are collector INTERNALS, not Readings. The new `modify`, `rename` and manual `set reopen` paths have isolated regression tests; actual FHEM socket ownership, `reload`, `rereadcfg` and `disable` still need live verification (issues #4/#9).
 - Automatic creation produces stable names from the **full MAC address**. Rename FHEM devices as desired; matching uses collector + MAC, not the name.
 - Existing MQTT-derived reading names (e.g. `gas_vars_2_value`, `aussentemperatur`) are deliberately **not** retained; dependent `userReadings`, statistics, DOIF, and DbLog queries need migration.
 - Systeminfo and numeric readings are preserved as text; the code must not interpret units or coerce implausible counters.
