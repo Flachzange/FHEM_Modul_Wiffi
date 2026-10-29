@@ -12,7 +12,7 @@
 - License: **GPL-2.0-or-later**. The `LICENSE` file contains the unmodified GPLv2 text; project SPDX notices and the README explicitly grant GPLv2 *or (at the user's option) any later version*. Keep those statements consistent and do not change license terms without maintainer approval.
 - Maintainer: Flachzange. Status: **experimental, not production-validated**.
 - The module shall not depend on Node-RED, MQTT, polling, `notify`, or `dummy` devices for normal ingestion. WIFFI HTTP control uses FHEM `HttpUtils_NonblockingGet` without introducing blocking commands or timers.
-- Generated releases belong under `dist/` and are not hand-edited or committed. Do not introduce a release layout until it is actually needed and tested.
+- Project release artifacts belong under `dist/`; follow the generic build-output rules in `AGENTS.md`. Do not introduce a release layout until it is actually needed and tested.
 
 ## WIFFI wire protocol and identity contract
 

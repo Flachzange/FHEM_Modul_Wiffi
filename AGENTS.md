@@ -30,11 +30,15 @@ This is the reusable foundation for coding agents developing FHEM Perl modules. 
 ## FHEM runtime engineering rules
 
 - Verify uncertain FHEM behavior against current FHEM source/commandref. Never invent attribute semantics, callbacks, event rules, TCP helpers, or lifecycle guarantees.
+- Prefer explicit, documented interfaces over hidden behavior. Declare module attributes in `AttrList`. Do not add automatic global or device-specific `userattr` maintenance. For dynamic numbered attribute families, use a verified regex-based `AttrList` declaration covering the intended names rather than enumerating an arbitrary fixed subset.
+- Do not add `NotifyOrderPrefix` without a concrete, documented ordering dependency verified against the relevant FHEM call path.
 - Follow the applicable framework call path, not just the module wrapper: `TcpServer_Open`, `TcpServer_Accept`, `TcpServer_Close`, `HttpUtils_NonblockingGet`, `CommandDefine`, `CommandAttr`, `CommandDelete`, `InternalTimer`, `RemoveInternalTimer`, and reading-update functions.
 - Record the inspected FHEM source revision/date and relevant side effects (return values, events, logging, timers, cleanup, security) in a PR when these functions matter.
 - Treat `$hash->{STATE}` and public readings as *presentations*, not authoritative transient socket/lifecycle state. FHEM can apply `stateFormat` or restore stale readings. Keep transient ownership/state in dedicated internals.
 - Update authoritative internal state **before** publishing FHEM readings or events: event processing may reenter module callbacks.
 - Preserve configured device attributes and FHEM ownership across applicable and realistic define/modify, autocreate, rename, rereadcfg, reload, disable/enable, undefine/delete, shutdown, and restart sequences.
+- Internal presentation defaults, including `stateFormat` and `devStateIcon` where applicable, must remain overridable by normal user attributes. Initialization and later state changes must respect explicit user configuration rather than reapplying defaults over it.
+- For modules that automatically control devices, define when control ownership is acquired, retained and relinquished. Do not silently overwrite manual state changes. Recovery, stop and cleanup actions must respect that ownership; the exact policy belongs in the project supplement.
 - Do not assume a callback return value is propagated by FHEM: inspect the actual caller. Recover or remain coherent even if a later callback fails after an earlier framework mutation.
 - Classify every new internal state value by lifetime: local operation, device hash, FHEM process, or persistence across restart. Do not rely on stale restored readings or a mutable device name for durable ownership.
 - Use stable ownership evidence (for example FUUID) before any persistent overwrite/deletion/migration. Never adopt data merely because an old name is reused.
@@ -42,6 +46,15 @@ This is the reusable foundation for coding agents developing FHEM Perl modules. 
 - Keep public diagnostic readings minimal. Avoid publishing redundant copies of raw JSON, protocol metadata, and internal counters as readings without a real user-facing need.
 - For externally distributed FHEM modules, explicitly check that users can identify the installed module revision in FHEM. `FVERSION` is the conventional module-file version INTERNAL; do not add a competing `VERSION` Internal or a version Reading without a real need. **Source-backed pitfall (FHEM::Meta, inspected 2026-10-14):** `SetInternals()` copies only `META->{x_version}` to `FVERSION`; for custom modules with `META.json` `version` but no SVN `$Id`, `__SetXVersion` may leave `x_version` undefined. In that case use a minimal fallback generated from `FHEM::Meta::Get($hash, 'version')` after successful `SetInternals`, and test the actual FVERSION value on a device, not just metadata syntax. Module version and connected-device firmware version are different.
 - New dependencies require justification, documentation, and CI coverage. Do not introduce a generic framework or many single-purpose helpers where one clear path suffices.
+
+## File persistence (when used)
+
+These rules apply when a module maintains its own persistent files; they do not require a module to introduce file storage, backups or migration machinery.
+
+- Write atomically and use restrictive permissions appropriate to the stored data. Validate complete semantic content before adopting persisted state, not merely JSON syntax or a schema number.
+- When backup recovery is part of the design, restore only from a semantically valid backup and preserve the damaged original for diagnosis. Define how failed writes and invalid main/backup files are reported without silently discarding valid data.
+- Document schema changes and compatibility policy explicitly. Test any claimed compatibility with existing files; do not introduce automatic migration or fallback paths without an approved requirement.
+- Keep project-specific filenames, schema versions, exact permissions, backup policy and corrupt-file naming in the project supplement.
 
 ## Verified FHEM core behavior (source-backed, not a live test)
 
@@ -113,6 +126,7 @@ This quality gate applies after every change, not just a release. Keep verified,
 
 - A user-visible change updates the relevant module sources, `README.md`, examples, tests, and changelog when introduced. Add German and English FHEM commandref documentation before release; keep both synchronized.
 - When a version is introduced, keep source version, embedded META, changelog, README, release artifacts, and tests consistent. Do **not** bump versions for docs-only/tests-only work.
+- Treat generated release artifacts as build outputs: do not edit them manually or commit them. Keep their location and packaging layout in the project supplement; verify generated copies against the authoritative sources.
 - Validate Perl syntax, complete tests, callback names, duplicate globals, required dependencies, commandref/META when implemented, UTF-8, JSON fixtures, source-to-package byte equality, checksums, and deterministic release artifacts before publishing. Document exceptions for steps not yet available.
 - Never claim the FHEM module is production-ready solely because isolated Perl syntax and parser tests pass.
 - Use a focused branch named `codex/<short-description>` for **new work** unless the maintainer explicitly requests otherwise or work continues in an already-approved existing PR branch.
@@ -121,10 +135,9 @@ This quality gate applies after every change, not just a release. Keep verified,
 
 ## Rule provenance
 
-Adapted and consolidated from the current default-branch versions of:
+Adapted and consolidated from the project histories of:
 
 - [FHEM_Modul_Fronius_Wattpilot/AGENTS.md](https://github.com/Flachzange/FHEM_Modul_Fronius_Wattpilot/blob/main/AGENTS.md): source-of-truth discipline, framework side-effect/callback audits, reload/lifetime/ownership analysis, test-double fidelity, adversarial review, safety claims, release and PR rigor.
-- [FHEMPresenceSimulation/AGENTS.md](https://github.com/Flachzange/FHEMPresenceSimulation/blob/main/AGENTS.md): simplicity/consolidation, explicit behavior contracts, strict tests, documentation and release workflow.
+- [FHEMPresenceSimulation/AGENTS.md](https://github.com/Flachzange/FHEMPresenceSimulation/blob/d924d8786945c066ff31412ecdf87550a895570d/AGENTS.md): simplicity/consolidation, explicit behavior contracts, strict tests, documentation and release workflow.
 
 These are reusable FHEM development and review practices, not claims that every FHEM module needs a TCP collector, specific device commands or the same integration tests. Project-specific behavior belongs in a supplement.
-
