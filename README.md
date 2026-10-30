@@ -66,3 +66,13 @@ Bestehende Collector-plus-MAC-Definitionen bleiben unterstützt. Beim Wechsel vo
 - Vollständige Befehlsreferenz in FHEM: `help WIFFI_Collector` und `help WIFFI_DEVICE`.
 - [Änderungen](CHANGELOG.md), [Prüfstand und bekannte Grenzen](docs/fhem-lifecycle-test-matrix.md), [Framework-Audit](docs/fhem-framework-audit.md), [Release-Prüfung](docs/release-readiness.md).
 - Lizenz: [GPL-2.0-or-later](LICENSE).
+
+## Entwicklung
+
+[AGENTS.md](AGENTS.md) ist eine synchronisierte Kopie aus
+[Flachzange/FHEM_Agent_Rules](https://github.com/Flachzange/FHEM_Agent_Rules).
+Vor Arbeiten zusätzlich [AGENTS-WIFFI.md](AGENTS-WIFFI.md) lesen.
+Generische Erkenntnisse zentral vorschlagen; projektspezifische Regeln im Zusatz pflegen.
+Die übernommene Revision steht in [.github/agent-rules.json](.github/agent-rules.json).
+Der CI-Check verifiziert Quelle und Bytegleichheit; die Pflichtprüfung muss zusätzlich
+in den Repository-Einstellungen aktiviert werden.
